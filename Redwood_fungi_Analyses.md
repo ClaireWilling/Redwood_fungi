@@ -1427,7 +1427,7 @@ summary.gdm(gdm.modelroot)
     ## [1] 
     ## [1] 
     ## [1] GDM Modelling Summary
-    ## [1] Creation Date:  Wed Aug 26 12:02:34 2020
+    ## [1] Creation Date:  Wed Aug 26 12:06:57 2020
     ## [1] 
     ## [1] Name:  gdm.modelroot
     ## [1] 
@@ -1469,7 +1469,7 @@ summary.gdm(gdm.modelsoil)
     ## [1] 
     ## [1] 
     ## [1] GDM Modelling Summary
-    ## [1] Creation Date:  Wed Aug 26 12:02:34 2020
+    ## [1] Creation Date:  Wed Aug 26 12:06:57 2020
     ## [1] 
     ## [1] Name:  gdm.modelsoil
     ## [1] 
@@ -3492,6 +3492,12 @@ Figure formatting
 library(cowplot)
 ##In methods; shows climatic controls on decomp, emphasizes climatic refugia 
 Fig1<-cowplot::plot_grid(Decompplot)
+Fig1
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
+
+``` r
 ##Ordination and taxonomic comp across sites; significant differences between sample types (roots and soils and site)
 Figure2A<-cowplot::plot_grid(ORD,
                             rel_heights = c(0.1, 1.85),
@@ -3504,21 +3510,45 @@ Figure2B<-cowplot::plot_grid(barplot,
 Figure2AB<-cowplot::plot_grid(Figure2A,Figure2B,
                             rel_widths = c(3.9,2.8),
                             nrow=1)
+Figure2AB
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-2.png)<!-- -->
+
+``` r
 ##Figure 3; GDMs and beta-dispersion across sites; niche factors (pH) are more important for turnover in root communities whereas neutral factors (geographic distance) is more important for turnover in soil communities. There is no significant nestedeness across sites for roots or soils, indicating that turnover is resultant from species replacement, not spp gains or losses. There is a significant relationship between beta-dispersion and AET, but AET is not important for community comp. Drier sites have higher dispersion, meaning that there is greater variability in those communities, potentially due to decrease in habitat connectivity/"island" size. 
 Figure3AB<-cowplot::plot_grid(GDMsoil, GDMroot,
                   labels = c("a)", "b)"), 
                   label_size = 14,
                   label_fontfamily = "sans",
                   ncol = 1)
+Figure3AB
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-3.png)<!-- -->
+
+``` r
 Figure3C<-cowplot::plot_grid(betadispplot,
                   labels = c("c)"), 
                   label_size = 14,
                   label_fontfamily = "sans")
+Figure3C
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-4.png)<!-- -->
+
+``` r
 Figure3ABC<-cowplot::plot_grid(Figure3AB,Figure3C,
                             rel_widths  = c(2.2,2),
                             ncol=2,
                             label_size = 12, 
                             label_fontfamily = "sans")
+Figure3ABC
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-5.png)<!-- -->
+
+``` r
 ##Rhizonode composition; Rhizonodes host distinct communities from roots and soils (significant permanova results for all sample types)
 Figure4A<-cowplot::plot_grid(ORDStructureplot,
                             rel_heights = c(0.1, 1.85),
@@ -3531,6 +3561,12 @@ Figure4B<-cowplot::plot_grid(Rhizobarplot,
 Figure4AB<-cowplot::plot_grid(Figure4A,Figure4B,
                             rel_widths = c(3.9,2.8),
                             nrow=1)
+Figure4AB
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-6.png)<!-- -->
+
+``` r
 ##AMF are enriched in rhizonodes and only Glomeromycota falls far off of the 1:1 line between roots and rhizonodes (other fungal phylums are much closer to the 1:1 line). Rhizonodes show less beta-dispersion than adjacent root tissue, indicating that there might be greater precision in selection of fungal communities
 Figure5AB<-cowplot::plot_grid(Rootvrhizonode,betahomogenstruc,
                             labels = c("a)", "b)"),
@@ -3542,56 +3578,62 @@ Figure5C<-cowplot::plot_grid(logplotRootRhizo,
                             label_fontfamily = "sans")
 Figure5ABC<-cowplot::plot_grid(Figure5AB,Figure5C,
                                rel_widths  = c(2,3.9))
-##Supplemental Figures
-Rhizonodenetwork
-```
-
-![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
-
-``` r
-logplotRootRhizo
-```
-
-![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-2.png)<!-- -->
-
-``` r
-Glombarplot
-```
-
-![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-3.png)<!-- -->
-
-``` r
-ShannonRhizo
-```
-
-![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-4.png)<!-- -->
-
-``` r
-SimpsonRhizo
-```
-
-![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-5.png)<!-- -->
-
-``` r
-ShannonSoils
-```
-
-![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-6.png)<!-- -->
-
-``` r
-Simpsonroots
+Figure5ABC
 ```
 
 ![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-7.png)<!-- -->
 
 ``` r
-Shannonroots
+##Supplemental Figures
+Rhizonodenetwork
 ```
 
 ![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-8.png)<!-- -->
 
 ``` r
-Simpsonroots
+logplotRootRhizo
 ```
 
 ![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-9.png)<!-- -->
+
+``` r
+Glombarplot
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-10.png)<!-- -->
+
+``` r
+ShannonRhizo
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-11.png)<!-- -->
+
+``` r
+SimpsonRhizo
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-12.png)<!-- -->
+
+``` r
+ShannonSoils
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-13.png)<!-- -->
+
+``` r
+Simpsonroots
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-14.png)<!-- -->
+
+``` r
+Shannonroots
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-15.png)<!-- -->
+
+``` r
+Simpsonroots
+```
+
+![](Redwood_fungi_Analyses_files/figure-gfm/unnamed-chunk-24-16.png)<!-- -->

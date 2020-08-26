@@ -1643,4 +1643,7 @@ Shannonroots
 Simpsonroots
 
 ##Add in the summary of stats 
+##permanova
+
+
 ```
