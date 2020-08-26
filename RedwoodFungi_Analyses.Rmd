@@ -1387,60 +1387,60 @@ pHdistroot<-dist(dfroot$pH)
 
 ##beta.pair (spatial turnover and nestedness)
 fungiroots<-Rootdf; Rootdf[Rootdf>0]=1 
-fungi.dist.roots<-beta.pair(fungiroots, index.family = "jaccard");
+#fungi.dist.roots<-beta.pair(fungiroots, index.family = "jaccard");
 
 
-par(mfrow=c(1,1),mar=c(2, 2, 4, 0.5))
+#par(mfrow=c(1,1),mar=c(2, 2, 4, 0.5))
 
 ##gdroot is distance matrix of spatial distance
 ##phdistroot is a distance matrix of difference in pH
 
 
 ##turnover across spatial distance (positive trend in turnover with increasing spatial distance between samples)
-color=rgb(0,0,0,alpha=0.1)
-plot(jitter(gdroot),fungi.dist.roots$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
-mantel(fungi.dist.roots$beta.jtu~gdroot)
-mantel(fungi.dist.roots$beta.jtu~pHdistroot)
-abline(lm(fungi.dist.roots$beta.jtu~gdroot),col="red")
+#color=rgb(0,0,0,alpha=0.1)
+#plot(jitter(gdroot),fungi.dist.roots$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.roots$beta.jtu~gdroot)
+#mantel(fungi.dist.roots$beta.jtu~pHdistroot)
+#abline(lm(fungi.dist.roots$beta.jtu~gdroot),col="red")
 
 ##no pattern of nestedness across spatial distance; species are not being lost or gained; turnover is resulting in replacement
-color=rgb(0,0,0,alpha=0.1)
-plot(jitter(gdroot),fungi.dist.roots$beta.jne,xlab=" ",ylab=" ", ylim=c(0,0.4), col=color, cex=0.2)
-test<-vegan::mantel(as.matrix(fungi.dist.roots$beta.jne),gdroot)
-abline(lm(fungi.dist.roots$beta.jne~gdroot),col="red")
+#color=rgb(0,0,0,alpha=0.1)
+#plot(jitter(gdroot),fungi.dist.roots$beta.jne,xlab=" ",ylab=" ", ylim=c(0,0.4), col=color, cex=0.2)
+#test<-vegan::mantel(as.matrix(fungi.dist.roots$beta.jne),gdroot)
+#abline(lm(fungi.dist.roots$beta.jne~gdroot),col="red")
 
 ##turnover across difference in pH (positive turnover; increases with difference in pH)
-plot(jitter(pHdistroot),fungi.dist.roots$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
-mantel(fungi.dist.roots$beta.jtu~pHdistroot)
-abline(lm(fungi.dist.roots$beta.jtu~pHdistroot),col="red")
+#plot(jitter(pHdistroot),fungi.dist.roots$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.roots$beta.jtu~pHdistroot)
+#abline(lm(fungi.dist.roots$beta.jtu~pHdistroot),col="red")
 
 ##nestedness across pH (not signficantly nested)
-plot(jitter(pHdistroot),fungi.dist.roots$beta.jne,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
-mantel(fungi.dist.roots$beta.jne~pHdistroot)
-abline(lm(fungi.dist.roots$beta.jne~pHdistroot),col="red")
+#plot(jitter(pHdistroot),fungi.dist.roots$beta.jne,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.roots$beta.jne~pHdistroot)
+#abline(lm(fungi.dist.roots$beta.jne~pHdistroot),col="red")
 
 
 fungisoils<-Soildf; Soildf[Soildf>0]=1 
-fungi.dist.soils<-beta.pair(fungisoils, index.family = "jaccard");
+#fungi.dist.soils<-beta.pair(fungisoils, index.family = "jaccard");
 
-par(mfrow=c(1,1),mar=c(2, 2, 4, 0.5))
+#par(mfrow=c(1,1),mar=c(2, 2, 4, 0.5))
 
-color=rgb(0,0,0,alpha=0.1)
-plot(jitter(gdsoil),fungi.dist.soils$beta.jne,xlab=" ",ylab=" ", ylim=c(0,0.4), col=color, cex=0.2)
-mantel(fungi.dist.soils$beta.jne~gdsoil)
-mantel(fungi.dist.soils$beta.jne~pHdistsoil)
-abline(lm(fungi.dist.soils$beta.jne~gdsoil),col="red")
+#color=rgb(0,0,0,alpha=0.1)
+#plot(jitter(gdsoil),fungi.dist.soils$beta.jne,xlab=" ",ylab=" ", ylim=c(0,0.4), col=color, cex=0.2)
+#mantel(fungi.dist.soils$beta.jne~gdsoil)
+#mantel(fungi.dist.soils$beta.jne~pHdistsoil)
+#abline(lm(fungi.dist.soils$beta.jne~gdsoil),col="red")
 
 library(vegan)
-t1<-vegan::mantel(as.matrix(fungi.dist.soils$beta.jne),gdsoil)
+#t1<-vegan::mantel(as.matrix(fungi.dist.soils$beta.jne),gdsoil)
 
-plot(jitter(gdsoil),fungi.dist.soils$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
-mantel(fungi.dist.soils$beta.jtu~gdsoil)
-abline(lm(fungi.dist.soils$beta.jtu~gdsoil),col="red")
+#plot(jitter(gdsoil),fungi.dist.soils$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.soils$beta.jtu~gdsoil)
+#abline(lm(fungi.dist.soils$beta.jtu~gdsoil),col="red")
 
-plot(jitter(pHdistsoil),fungi.dist.soils$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
-mantel(fungi.dist.soils$beta.jtu~pHdistsoil)
-abline(lm(fungi.dist.soils$beta.jtu~pHdistsoil),col="red")
+#plot(jitter(pHdistsoil),fungi.dist.soils$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.soils$beta.jtu~pHdistsoil)
+#abline(lm(fungi.dist.soils$beta.jtu~pHdistsoil),col="red")
 
 
 
@@ -1521,7 +1521,8 @@ betadispmodelh<-lmer(formula = BetaDist~scale(aet) +(1|SiteID), data = betadispa
 AIC(betadispmodela, betadispmodelb, betadispmodelc, betadispmodeld, betadispmodele, betadispmodelf, betadispmodelg, betadispmodelh)
 BIC(betadispmodela, betadispmodelb, betadispmodelc, betadispmodeld, betadispmodele, betadispmodelf, betadispmodelg, betadispmodelh)
 
-
+detach("package:plyr")
+library(dplyr)
 betadispallgroup<-(betadispall) %>% 
   group_by(aet)%>% 
   summarise(MeanDisp=mean(na.exclude(BetaDist)),
@@ -1825,6 +1826,9 @@ library(cowplot)
 ##In methods; shows climatic controls on decomp, emphasizes climatic refugia 
 Fig1<-cowplot::plot_grid(Decompplot)
 
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure1.pdf", plot = Fig1, width = 8, height = 5)
+
 ##Ordination and taxonomic comp across sites; significant differences between sample types (roots and soils and site)
 Figure2A<-cowplot::plot_grid(ORD,
                             rel_heights = c(0.1, 1.85),
@@ -1839,6 +1843,8 @@ Figure2B<-cowplot::plot_grid(barplot,
 Figure2AB<-cowplot::plot_grid(Figure2A,Figure2B,
                             rel_widths = c(3.9,2.8),
                             nrow=1)
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure2AB.pdf", plot = Figure2AB, width=10.2, height = 5)
 
 ##Figure 3; GDMs and beta-dispersion across sites; niche factors (pH) are more important for turnover in root communities whereas neutral factors (geographic distance) is more important for turnover in soil communities. There is no significant nestedeness across sites for roots or soils, indicating that turnover is resultant from species replacement, not spp gains or losses. There is a significant relationship between beta-dispersion and AET, but AET is not important for community comp. Drier sites have higher dispersion, meaning that there is greater variability in those communities, potentially due to decrease in habitat connectivity/"island" size. 
 Figure3AB<-cowplot::plot_grid(GDMsoil, GDMroot,
@@ -1858,6 +1864,9 @@ Figure3ABC<-cowplot::plot_grid(Figure3AB,Figure3C,
                             label_size = 12, 
                             label_fontfamily = "sans")
 
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure3ABC.pdf", plot = Figure3ABC, width=10.2, height = 5.8)
+
 
 ##Rhizonode composition; Rhizonodes host distinct communities from roots and soils (significant permanova results for all sample types)
 Figure4A<-cowplot::plot_grid(ORDStructureplot,
@@ -1873,6 +1882,9 @@ Figure4B<-cowplot::plot_grid(Rhizobarplot,
 Figure4AB<-cowplot::plot_grid(Figure4A,Figure4B,
                             rel_widths = c(3.9,2.8),
                             nrow=1)
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure4AB.pdf", plot = Figure4AB, width=10.2, height = 5.8)
+
 
 ##AMF are enriched in rhizonodes and only Glomeromycota falls far off of the 1:1 line between roots and rhizonodes (other fungal phylums are much closer to the 1:1 line). Rhizonodes show less beta-dispersion than adjacent root tissue, indicating that there might be greater precision in selection of fungal communities
 Figure5AB<-cowplot::plot_grid(Rootvrhizonode,betahomogenstruc,
@@ -1885,6 +1897,10 @@ Figure5C<-cowplot::plot_grid(logplotRootRhizo,
                             label_fontfamily = "sans")
 Figure5ABC<-cowplot::plot_grid(Figure5AB,Figure5C,
                                rel_widths  = c(2,3.9))
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure5ABC.pdf", plot = Figure5ABC, width=10.2, height = 5.8)
+
 
 ##Supplemental Figures
 Rhizonodenetwork
