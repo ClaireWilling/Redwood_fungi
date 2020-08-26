@@ -1569,7 +1569,9 @@ library(cowplot)
 ##In methods; shows climatic controls on decomp, emphasizes climatic refugia 
 Fig1<-cowplot::plot_grid(Decompplot)
 Fig1
+
 ##Ordination and taxonomic comp across sites; significant differences between sample types (roots and soils and site)
+
 Figure2A<-cowplot::plot_grid(ORD,
                             rel_heights = c(0.1, 1.85),
                             labels = c("a)"),
@@ -1582,6 +1584,7 @@ Figure2AB<-cowplot::plot_grid(Figure2A,Figure2B,
                             rel_widths = c(3.9,2.8),
                             nrow=1)
 Figure2AB
+
 ##Figure 3; GDMs and beta-dispersion across sites; niche factors (pH) are more important for turnover in root communities whereas neutral factors (geographic distance) is more important for turnover in soil communities. There is no significant nestedeness across sites for roots or soils, indicating that turnover is resultant from species replacement, not spp gains or losses. There is a significant relationship between beta-dispersion and AET, but AET is not important for community comp. Drier sites have higher dispersion, meaning that there is greater variability in those communities, potentially due to decrease in habitat connectivity/"island" size. 
 Figure3AB<-cowplot::plot_grid(GDMsoil, GDMroot,
                   labels = c("a)", "b)"), 
@@ -1600,6 +1603,7 @@ Figure3ABC<-cowplot::plot_grid(Figure3AB,Figure3C,
                             label_size = 12, 
                             label_fontfamily = "sans")
 Figure3ABC
+
 ##Rhizonode composition; Rhizonodes host distinct communities from roots and soils (significant permanova results for all sample types)
 Figure4A<-cowplot::plot_grid(ORDStructureplot,
                             rel_heights = c(0.1, 1.85),
@@ -1613,6 +1617,7 @@ Figure4AB<-cowplot::plot_grid(Figure4A,Figure4B,
                             rel_widths = c(3.9,2.8),
                             nrow=1)
 Figure4AB
+
 ##AMF are enriched in rhizonodes and only Glomeromycota falls far off of the 1:1 line between roots and rhizonodes (other fungal phylums are much closer to the 1:1 line). Rhizonodes show less beta-dispersion than adjacent root tissue, indicating that there might be greater precision in selection of fungal communities
 Figure5AB<-cowplot::plot_grid(Rootvrhizonode,betahomogenstruc,
                             labels = c("a)", "b)"),
@@ -1625,6 +1630,7 @@ Figure5C<-cowplot::plot_grid(logplotRootRhizo,
 Figure5ABC<-cowplot::plot_grid(Figure5AB,Figure5C,
                                rel_widths  = c(2,3.9))
 Figure5ABC
+
 ##Supplemental Figures
 Rhizonodenetwork
 logplotRootRhizo
@@ -1635,4 +1641,6 @@ ShannonSoils
 Simpsonroots
 Shannonroots
 Simpsonroots
+
+##Add in the summary of stats 
 ```
