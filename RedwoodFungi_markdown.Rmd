@@ -3,6 +3,7 @@ title: "Redwood fungal ecology"
 author: "Claire Willing"
 date: "5/14/2020"
 output: github_document
+html_document
 ---
 Bioinfomatic steps in ampTK
 ##Pre-processing reads; allowing for custum seq primers (spacers, etc)
