@@ -3,7 +3,7 @@ title: "Redwood fungal ecology"
 author: "Claire Willing"
 date: "5/14/2020"
 output: github_document
-html_document
+always_allow_html: true
 ---
 Bioinfomatic steps in ampTK
 ##Pre-processing reads; allowing for custum seq primers (spacers, etc)
@@ -2771,18 +2771,18 @@ scale_fill_manual(values = c("#2332A0", "#36B4FC", "#1BFFE8"))+
 
 ```
 Indicator spp analysis
-```{r eval=FALSE, include=FALSE}
+```{r echo=TRUE, message=TRUE, warning=TRUE}
 
 #Lets start trying to do indicator species. First extract the OTU table from rarefied NoSingletons
 
-indval_noS<-otu_table(rareNoSingletons)
+indval_noS<-otu_table(RAREstructure)
 
 #transpose it
 indval_noS = t(indval_noS)
 
 #Then make a dataframe from the mapping file that has 1 for root and 2 for structure and 3 for soil
 
-indval_data<-sample_data(rareNoSingletons)
+indval_data<-sample_data(RAREstructure)
 indval_data$SampleType <- gsub('Nodule', '1', indval_data$SampleType)
 indval_data$SampleType <- gsub('Root', '2', indval_data$SampleType)
 indval_data$SampleType <- gsub('Soil', '3', indval_data$SampleType)
@@ -2801,11 +2801,11 @@ fidg<-data.frame(group=gr, indval=iv, pvalue=pv, freq=fr)
 fidg<-fidg[order(fidg$group, -fidg$indval),]
 fidg
 
-indval_tax<-tax_table(rareNoSingletons)
+indval_tax<-tax_table(RAREstructure)
 indval_output<-indval_tax[c(rownames(fidg)),]
 indval_output<-cbind(fidg, indval_output)
 
-write.csv(indval_output, file = "~/Downloads/RedwoodProject/Phyloseq/Roots_v_Structures/Fungi/Big/amptk_indicators.csv")
+write.csv(indval_output, file = "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/amptk_indicators_CEW.csv")
 
 ```
 Figure formatting

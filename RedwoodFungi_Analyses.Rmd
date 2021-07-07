@@ -2261,15 +2261,24 @@ WEDGdistsoil<-dist(dfsoil$WEDG)
 pHdistsoil<-dist(dfsoil$pH)
 
 ##beta.pair (spatial turnover and nestedness)
+<<<<<<< HEAD
 #fungiroots<-Rootdf; Rootdf[Rootdf>0]=1 
 #save(fungiroots, file = "fungiroots.rda")
 load(file = "fungiroots.rda")
 fungi.dist.roots<-beta.pair(fungiroots, index.family = "jaccard")
+=======
+fungiroots<-Rootdf; Rootdf[Rootdf>0]=1 
+#fungi.dist.roots<-beta.pair(fungiroots, index.family = "jaccard");
+
+
+#par(mfrow=c(1,1),mar=c(2, 2, 4, 0.5))
+>>>>>>> 5319aa687235cacd8576a1c13a99a9130e060ba9
 
 ##gdroot is distance matrix of spatial distance
 ##phdistroot is a distance matrix of difference in pH
 
 
+<<<<<<< HEAD
 ##turnover and nestedness across spatial distance and pH 
 mantel(fungi.dist.roots$beta.jne~pHdistroot)
 mantel(fungi.dist.roots$beta.jtu~pHdistroot)
@@ -2289,6 +2298,62 @@ mantel(fungi.dist.soils$beta.jne~redcoverdistsoil)
 
 mantel(fungi.dist.soils$beta.jne~gdsoil)
 mantel(fungi.dist.soils$beta.jtu~gdsoil)
+=======
+##turnover across spatial distance (positive trend in turnover with increasing spatial distance between samples)
+#color=rgb(0,0,0,alpha=0.1)
+#plot(jitter(gdroot),fungi.dist.roots$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.roots$beta.jtu~gdroot)
+#mantel(fungi.dist.roots$beta.jtu~pHdistroot)
+#abline(lm(fungi.dist.roots$beta.jtu~gdroot),col="red")
+
+##no pattern of nestedness across spatial distance; species are not being lost or gained; turnover is resulting in replacement
+#color=rgb(0,0,0,alpha=0.1)
+#plot(jitter(gdroot),fungi.dist.roots$beta.jne,xlab=" ",ylab=" ", ylim=c(0,0.4), col=color, cex=0.2)
+#test<-vegan::mantel(as.matrix(fungi.dist.roots$beta.jne),gdroot)
+#abline(lm(fungi.dist.roots$beta.jne~gdroot),col="red")
+
+##turnover across difference in pH (positive turnover; increases with difference in pH)
+#plot(jitter(pHdistroot),fungi.dist.roots$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.roots$beta.jtu~pHdistroot)
+#abline(lm(fungi.dist.roots$beta.jtu~pHdistroot),col="red")
+
+##nestedness across pH (not signficantly nested)
+#plot(jitter(pHdistroot),fungi.dist.roots$beta.jne,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.roots$beta.jne~pHdistroot)
+#abline(lm(fungi.dist.roots$beta.jne~pHdistroot),col="red")
+
+
+fungisoils<-Soildf; Soildf[Soildf>0]=1 
+#fungi.dist.soils<-beta.pair(fungisoils, index.family = "jaccard");
+
+#par(mfrow=c(1,1),mar=c(2, 2, 4, 0.5))
+
+#color=rgb(0,0,0,alpha=0.1)
+#plot(jitter(gdsoil),fungi.dist.soils$beta.jne,xlab=" ",ylab=" ", ylim=c(0,0.4), col=color, cex=0.2)
+#mantel(fungi.dist.soils$beta.jne~gdsoil)
+#mantel(fungi.dist.soils$beta.jne~pHdistsoil)
+#abline(lm(fungi.dist.soils$beta.jne~gdsoil),col="red")
+
+library(vegan)
+#t1<-vegan::mantel(as.matrix(fungi.dist.soils$beta.jne),gdsoil)
+
+#plot(jitter(gdsoil),fungi.dist.soils$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.soils$beta.jtu~gdsoil)
+#abline(lm(fungi.dist.soils$beta.jtu~gdsoil),col="red")
+
+#plot(jitter(pHdistsoil),fungi.dist.soils$beta.jtu,xlab=" ",ylab=" ", ylim=c(0,1), col=color, cex=0.2)
+#mantel(fungi.dist.soils$beta.jtu~pHdistsoil)
+#abline(lm(fungi.dist.soils$beta.jtu~pHdistsoil),col="red")
+
+
+
+##Rhizonode nestedness
+library(RInSp)
+
+Rhiznodedf<-subset_samples(RAREstructure, SampleType=="Rhizonode")
+Rootstrudf<-subset_samples(RAREstructure, SampleType=="Root")
+Soilstrucdf<-subset_samples(RAREstructure, SampleType=="Soil")
+>>>>>>> 5319aa687235cacd8576a1c13a99a9130e060ba9
 
 mantel(fungi.dist.soils$beta.jne~WEDGdistsoil)
 mantel(fungi.dist.soils$beta.jtu~WEDGdistsoil)
@@ -2349,6 +2414,7 @@ betadispmodelaet<-lmer(formula = BetaDist~scale(aet)*SampleType +(1|SiteID), dat
 betadispmodelpH<-lmer(formula = BetaDist~scale(pH)*SampleType +(1|SiteID), data = betadispall, REML = F)
 
 
+<<<<<<< HEAD
 AIC(betadispmodelaet, betadispmodelLat, betadispmodelpH, betadispmodelK)
 BIC(betadispmodelaet, betadispmodelLat, betadispmodelpH, betadispmodelK)
 
@@ -2361,6 +2427,9 @@ anova(betadispmodelKfull, betadispmodelKmin1, betadispmodelKmin2)
 ##no random effect
 betadispmodelKmin2<-lmer(formula = BetaDist~(k) +(1|SiteID), data = betadispall, REML = T)
 
+=======
+detach("package:plyr")
+>>>>>>> 5319aa687235cacd8576a1c13a99a9130e060ba9
 library(dplyr)
 betadispallgroup<-(betadispall) %>% 
   group_by(SiteID, SampleType)%>% 
@@ -2651,7 +2720,18 @@ Figure formatting
 ```{r}
 library(cowplot)
 
+<<<<<<< HEAD
 Figure1<-cowplot::plot_grid(plotmap)
+=======
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure1.pdf", plot = Fig1, width = 8, height = 5)
+
+##Ordination and taxonomic comp across sites; significant differences between sample types (roots and soils and site)
+Figure2A<-cowplot::plot_grid(ORD,
+                            rel_heights = c(0.1, 1.85),
+                            labels = c("a)"),
+                            label_fontfamily = "sans")
+>>>>>>> 5319aa687235cacd8576a1c13a99a9130e060ba9
 
 setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
 ggsave("Figure1.pdf", plot = Figure1, width=3.8, height = 4.5)                
@@ -2678,8 +2758,16 @@ Figure2ABC<-cowplot::plot_grid(Figure2A,Figure2BCl,
                             label_size = 12, 
                             label_fontfamily = "sans")
 
+<<<<<<< HEAD
 setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
 ggsave("Figure2ABC.pdf", plot = Figure2ABC, width=10.2, height = 5.8)
+=======
+Figure2AB<-cowplot::plot_grid(Figure2A,Figure2B,
+                            rel_widths = c(3.9,2.8),
+                            nrow=1)
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure2AB.pdf", plot = Figure2AB, width=10.2, height = 5)
+>>>>>>> 5319aa687235cacd8576a1c13a99a9130e060ba9
 
 Figure3A<-cowplot::plot_grid(GDMroot,
                   labels = c("a)"), 
@@ -2706,7 +2794,10 @@ Figure3ABC<-cowplot::plot_grid(Figure3A,Figure3BCl,
 setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
 ggsave("Figure3ABC.pdf", plot = Figure3ABC, width=10.2, height = 5.8)
 
+<<<<<<< HEAD
 ##Figure 4; morphological characterization of rhizonodes
+=======
+>>>>>>> 5319aa687235cacd8576a1c13a99a9130e060ba9
 
 
 Figure5A<-cowplot::plot_grid(StructuresORD,
@@ -2723,7 +2814,12 @@ Figure5AB<-cowplot::plot_grid(Figure5A,Figure5B,
                             rel_widths = c(3,3.2),
                             nrow=1)
 setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+<<<<<<< HEAD
 ggsave("Figure5AB.pdf", plot = Figure5AB, width=8, height = 4)
+=======
+ggsave("Figure4AB.pdf", plot = Figure4AB, width=10.2, height = 5.8)
+
+>>>>>>> 5319aa687235cacd8576a1c13a99a9130e060ba9
 
 
 Figure6AB<-cowplot::plot_grid(AMFsumsplot,ObservedRhizo,
@@ -2741,7 +2837,14 @@ setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
 ggsave("Figure6ABC.pdf", plot = Figure6ABC, width=11.5, height = 6.5)
 
 
+<<<<<<< HEAD
   
+=======
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure5ABC.pdf", plot = Figure5ABC, width=10.2, height = 5.8)
+
+
+>>>>>>> 5319aa687235cacd8576a1c13a99a9130e060ba9
 ##Supplemental Figures
 
 FigureS1A<-cowplot::plot_grid(ORD,
