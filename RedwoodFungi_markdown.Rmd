@@ -36,6 +36,7 @@ library(labdsv)
 library(TITAN2)
 library(cowplot)
 ```
+Publication formatting
 ```{r, include=FALSE}
 
 Publicationcolors <- function(...){
