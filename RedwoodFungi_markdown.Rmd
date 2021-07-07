@@ -1,0 +1,2948 @@
+---
+title: "Redwood fungal ecology"
+author: "Claire Willing"
+date: "5/14/2020"
+output: github_document
+---
+Bioinfomatic steps in ampTK
+##Pre-processing reads; allowing for custum seq primers (spacers, etc)
+amptk illumina -i unzipped -o Redwoodfunginew -f AACTTTYRRCAAYGGATCWCT -r AGCCTCCGCTTATTGATATGCTTAART --require_primer off --rescue_forward off --primer_mismatch 6 (6 wildcards in these primers)
+
+##Clustering data; 2 errors in alignment allowed (longer seq length); default of 97% similarity
+amptk cluster -i Redwoodfunginew.demux.fq.gz -e 1.0 -o Redwoodfunginew
+
+##Filter table based on what is in negative controls
+amptk filter -i Redwoodfunginew.otu_table.txt -f   Redwoodfunginew.cluster.otus.fa -p 0.005 -d --negatives ControlSynMockBuffer ControlPCR1 ControlExtractionBuffer ControlPCR2 ControlPCR3 ControlPCR4 ControlPCR5
+
+##Post clustering LULU (used for structures)
+amptk lulu -i Structures2.final.txt -f Structures2.filtered.otus.fa -o Structures2  
+    
+##Assign taxonomy (used ITS database)
+amptk taxonomy -f Redwoodfunginew.cluster.otus.fa -i Redwoodfunginew.otu_table.txt -m Redwoodfunginew.mapping_file.txt -d ITS -o Redwoodfunginew
+
+```{r include=FALSE} 
+library(phyloseq)
+library(vegan)
+library(devtools)
+library(lattice)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+library(nortest)
+library(SoDA)
+library(ecodist)
+library(labdsv)
+library(TITAN2)
+library(cowplot)
+```
+```{r, include=FALSE}
+
+Publicationcolors <- function(...){
+  library(scales)
+  discrete_scale("colour","Publication",manual_pal(values = c("#2332A0", "#36B4FC", "#1BFFE8", "#19FF31", "#FFE400", "#FE9400", "#ff5a04", "#AA3407", "red")))
+}
+
+```
+Plots and landscape metrics
+```{r}
+library(readr)
+library(ggplot2)
+library(tidyverse)
+library(sf) # for some spatial stuffs
+library(rgeos) # for buffer
+library(leaflet) # for some fun plotting
+library(landscapemetrics)
+library(landscapetools)
+
+# To read in land cover 
+library(raster)
+library(rgdal)
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+locs <- read_csv(file = "SiteLocations.csv")
+
+locs$plot <- substr(locs$SampleUnique,1,2) 
+
+# quick plot to see if it makes sense
+ggplot(data = locs) +
+  geom_point(aes(x = Longitude, y = Latitude, color = Plot), alpha = 0.5)
+
+# Calculate the midpoint of each set of 4 trees within each plot ID
+mids <- locs %>% dplyr::group_by(Plot) %>% dplyr::summarise(mid_long = mean(Longitude), mid_lat = mean(Latitude))
+
+
+# Join the original locations together with the midpoints for each tree by "plot"
+locs <- left_join(locs, mids, by = "Plot")
+locs$SiteID<-c(1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6,7,7,7,7,8,8,8,8)
+# Gut check to see if this mid-point makes sense... just subset one plot so that we can see the original points plus the new midpoint
+locs %>% filter(plot == "AR") %>% ggplot() +
+  geom_point(aes(x = Longitude, y = Latitude, color = as.factor(SiteID)), alpha = 0.5) +
+  geom_point(aes(x = mid_long, y = mid_lat), color = "blue")
+
+# Grab unique midpoint location for each plot ID
+# CREATE SF POINTS for each midpoint
+midpoints <- locs %>% dplyr::select(SiteID, mid_long, mid_lat) %>%
+  distinct() %>% 
+  sf::st_as_sf(coords = c("mid_long", "mid_lat")) %>% sf::st_set_crs(4326) %>% # THIS IS JUST SPECIFYING THE geodetic datum WGS84
+  sf::st_transform(crs = 26910) %>% # THIS IS UTM ZONE 10 WHICH IS GOOD FOR MOST OF NORTHERN CALIFORNIA...but might be better option for CRS
+  as(Class = "Spatial")
+
+# WIDTH SPECIFIES THE SIZE (or like radius) of the BUFFER IN METERS (10km = 10,000m)
+buffers <- gBuffer(midpoints, byid = TRUE, id = midpoints$plot, width = 10000) %>% st_as_sf() %>%
+  st_transform(crs = 4326) # transform back to WGS84 (we just converted to UTM Zone 10 to do the buffering in meters)
+
+labs <- unique(locs$SiteID)
+p <- c("#2332A0", "#36B4FC", "#1BFFE8", "#19FF31", "#FFE400", "#FE9400", "#ff5a04", "#AA3407", "red")
+
+
+pal <- colorFactor(palette = p, domain = labs)
+leaflet::leaflet(buffers, width = "100%") %>%
+  leaflet::addTiles() %>%
+  leaflet::addProviderTiles("Esri.WorldImagery") %>%
+  leaflet::setView(lat = 40, lng = -124, zoom = 6.5) %>%
+  leaflet::addPolygons(label = ~SiteID, color = ~pal(SiteID), opacity = 0.6) %>%
+  addLegend("bottomright", pal = pal, values = ~SiteID,
+    title = "Site ID",
+    opacity = 1) %>%
+  addScaleBar(position = "topleft")
+
+library(rworldmap)
+worldmap <- getMap(resolution = "high")
+worldmap <- st_as_sf(worldmap)
+class(worldmap)
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+Plotdata=read.table("MID_Meta.txt", header = T)
+
+plotmap<-ggplot(data = worldmap)+
+  geom_sf()+
+  geom_point(data = Plotdata,  # Add and plot species data
+		aes(x = Longitude, y = Latitude, 
+			colour = SiteID))+
+  coord_sf(xlim=c(-125,-118), ylim=c(33,44), expand = F)+
+  Publicationcolors()+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.key = element_rect(fill="transparent", colour = NA),
+        legend.position =c(0.00,0.3),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =10),
+        legend.spacing = unit(0, "mm"),
+        legend.background = element_rect(fill = "transparent", colour = NA),
+        plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+        strip.background=element_rect(fill="transparent", colour=NA),
+        strip.text = element_text(face="bold"))
+
+# FUNCTION TO CALCULATE GEODESIC BUFFERS
+make_GeodesicBuffer <- function(pts, width) {
+
+  # A) Construct buffers as points at given distance and bearing ---------------
+  dg <- seq(from = 0, to = 360, by = 5)
+
+  # Construct equidistant points defining circle shapes (the "buffer points")
+  buff.XY <- geosphere::destPoint(p = pts, 
+                                  b = rep(dg, each = length(pts)), 
+                                  d = width)
+
+  # B) Make SpatialPolygons -------------------------------------------------
+
+  # Group (split) "buffer points" by id
+  buff.XY <- as.data.frame(buff.XY)
+  id  <- rep(1:dim(pts)[1], times = length(dg))
+  lst <- split(buff.XY, id)
+
+  # Make SpatialPolygons out of the list of coordinates
+  poly   <- lapply(lst, sp::Polygon, hole = FALSE)
+  polys  <- lapply(list(poly), sp::Polygons, ID = NA)
+  spolys <- sp::SpatialPolygons(Srl = polys, 
+                                proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84"))
+  # Disaggregate (split in unique polygons)
+  spolys <- sp::disaggregate(spolys)
+  return(spolys)
+}
+
+# APPLY geodesic buffer FUNCTION
+pts <- locs %>% dplyr::select(mid_long, mid_lat) %>%
+  distinct()
+buffers_geodesic <- make_GeodesicBuffer(as.matrix(pts), 10000) # spatialpolygons
+
+# dataframe to store plot data
+p.df <- data.frame(plot = unique(locs$plot), row.names = row.names(buffers_geodesic))
+
+buffers_geodesic_SPDF <- SpatialPolygonsDataFrame(buffers_geodesic, p.df) 
+buffers_geodesic_SPDF <- sp::spTransform(buffers_geodesic_SPDF, CRSobj = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+
+buffers_geodesic <- buffers_geodesic_SPDF %>% st_as_sf()
+
+leaflet::leaflet(buffers_geodesic, width = "100%") %>%
+  leaflet::addTiles() %>%
+  leaflet::addProviderTiles("Esri.WorldImagery") %>%
+  leaflet::addPolygons(label = ~plot, color = ~pal(plot), opacity = 0.8) %>%
+  addLegend("bottomright", pal = pal, values = ~plot,
+    title = "10km buffers on tree plots",
+    opacity = 1) %>%
+  addScaleBar(position = "topleft")
+
+
+# Read in land cover data
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+lc <- raster("gaplf2011lc_v30_CA/gaplf2011lc_v30_ca.tif")
+
+ plot(lc) # quick gut check, is this the right raster layer
+ 
+# get crf string from raster 
+crs_string <- lc@crs
+
+# convert geodesic buffers to this CRS so we are all dealing with same "California land cover projection"
+buffers_geodesic <- buffers_geodesic %>% sf::st_transform(crs = crs_string) 
+buffers_geodesic <- as(buffers_geodesic, "Spatial") # convert to SPDF
+
+# Crop and mask the land cover data to each polygon 
+lc_by_plotbuffer <- list() # initiate empty list
+plotIDs <- unique(locs$plot)
+
+for (i in 1:length(buffers_geodesic)){
+  buffer <- buffers_geodesic[which(buffers_geodesic@data$plot == plotIDs[i]),]
+  tmp1 <- raster::crop(lc, extent(buffer))
+  tmp2 <- raster::mask(tmp1, buffer)
+  lc_by_plotbuffer[[i]] <- tmp2
+  names(lc_by_plotbuffer)[[i]] <- plotIDs[i]
+}
+
+# PLOT THE JS LAND COVER DATA
+ plotTest <- plot(lc_by_plotbuffer$JS)
+ rasterTest <- raster(lc_by_plotbuffer$JS)
+
+
+# PLOT THE PC LAND COVER DATA
+plot(lc_by_plotbuffer$PC)
+
+
+# ACCESS THE RASTER DATA CELL VALUES
+#lc_by_plotbuffer$JS@data@values 
+
+# WRITE OUT ALL OF THESE RASTER LAYERS to OUTPUT FOLDER
+for (i in 1:length(lc_by_plotbuffer)){
+  writeRaster(lc_by_plotbuffer[[i]], filename = paste(names(lc_by_plotbuffer)[[i]]), format = "HFA", overwrite = TRUE)
+}
+
+```
+
+```{r landscape and vegetation data}
+
+# landscape and vegetation data
+# resolution = 30x30 = 30m2; therefore, to calculate m2: count x 30m x 30m 
+## see: https://gis.stackexchange.com/questions/229455/calculating-areas-of-different-raster-classes-in-r
+
+# this will be useful to ID classes
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+#vegID <- read.table("gaplf2011lc_v30_CA/GAP_LANDFIRE_National_Terrestrial_Ecosystems_2011_Attributes.txt", sep="\t", header=TRUE)
+# redwoods are ID = 165
+
+
+# these are all the whole site buffer level (l = landcape, c = class)
+# lsm_l_shdi() # Shannon’s diversity index (Diversity metric)
+## Example: lsm_l_shdi(lc_by_plotbuffer) - all datasets - or lsm_l_shdi(lc_by_plotbuffer$AR) - one buffer
+# lsm_l_msidi() # Modified Simpson’s diversity index (Diversity metric)
+# lsm_l_msiei() # Modified Simpson’s evenness index (Diversity metric)
+# lsm_l_pr() # Patch richness (Diversity metric)
+# lsm_l_ord() # Patch richness density (Diversity metric)
+# lsm_l_ed() # Edge Density (Area and Edge metric)
+# lsm_l_lpi() # Largest patch index (Area and Edge metric)
+
+#all <- data.frame(JS = getValues(lc_by_plotbuffer$JS), PC = getValues(lc_by_plotbuffer$PC), HR = getValues(lc_by_plotbuffer$HR), 
+#                       AR = getValues(lc_by_plotbuffer$AR), MG = getValues(lc_by_plotbuffer$MG), SP = getValues(lc_by_plotbuffer$SP), 
+ #                      BB = getValues(lc_by_plotbuffer$BB), BC = getValues(lc_by_plotbuffer$BC))
+
+
+# Table with different landscape heterogeneity metrics
+# Shannon's diversity (shannon), Simpson's diversity (simpson), land cover richness density (LCR), Edge density (EDG), weighted edge density (WEDG) = edge density/land cover richness, Largest patch index (LPI), percentage of redwood (redwood_percent)
+
+
+#landscapeMetrics <- data.frame(site = names(lc_by_plotbuffer),
+  #                                   shannon = #lsm_l_shdi(lc_by_plotbuffer)$value,
+  #                                   simpson = #lsm_l_msidi(lc_by_plotbuffer)$value,
+  #                                   LCR = lsm_l_pr(lc_by_plotbuffer)$value,
+ #                                    EDG = #lsm_l_ed(lc_by_plotbuffer)$value, 
+ #                                    LPI = lsm_l_lpi(lc_by_plotbuffer)$value,
+  #                                   TotArea_ha = lsm_l_ta(lc_by_plotbuffer)$value) %>%
+#  mutate(WEDG = EDG/LCR)
+
+
+# get vegetation ID names
+#vegNames <- vegID %>% 
+#  dplyr::select(Value, NVC_CLASS, NVC_SUBCL, NVC_FORM, NVC_DIV, NVC_MACRO, NVC_GROUP, ECOLSYS_LU) %>%
+#  dplyr::rename(ID = "Value") 
+
+# get raw vegetation data
+#rawDataList <- lapply(lc_by_plotbuffer, function(x) {
+#  lsm_c_ca(x) #function automatically converts the units to hectares 
+ # })
+
+# join the list of raw data and keep site name as a column
+#vegData <- dplyr::bind_rows(rawDataList, .id = 'site') %>%
+#  rename(ID = "class", ha = value) %>% 
+#  left_join(vegNames, by = c("ID")) %>%
+#  left_join(landscapeMetrics %>% dplyr::select(site, TotArea_ha), by=c("site")) %>%
+#  mutate(vegPercent = ha/TotArea_ha) %>%
+#  dplyr::select(site, ID, ha, TotArea_ha, vegPercent, NVC_CLASS, NVC_SUBCL, NVC_FORM, NVC_DIV, NVC_MACRO, NVC_GROUP, ECOLSYS_LU)
+
+
+# Create vegetation/community matrix table for each site
+#vegMatrix <- vegData %>% 
+ # pivot_wider(id_cols = site, names_from = ID, values_from = ha) #site name is a column name not a row name 
+
+
+# now that we've done that, let's get percentage redwood
+#rdwdArea <- vegData %>% filter(ID == 165) %>%
+#  rename(redwood_ha = ha, redwoodPercent = vegPercent) %>%
+#  dplyr::select(site, redwood_ha, redwoodPercent)
+
+# now add to the landscape metrics we calculated above  
+#landscapeMetrics_FINAL <- landscapeMetrics %>% 
+ # left_join(rdwdArea, by = "site")
+
+# save to csv
+#write_csv(landscapeMetrics_FINAL, "landscapeMetrics.csv")
+#write_csv(vegMatrix, "vegMatrix.csv")
+
+```
+
+Reading in my OTU table (phyloseq)
+```{r message=FALSE, warning=FALSE}
+
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+#CN=read.csv("CNData_Cleaned.csv", header=T)
+    #Calculate CN ratio
+    #CNratio=PercentC/PercentN
+    ##Append to table
+    #CNall<-cbind.data.frame(CNratio, CN)
+#attach(CNall)
+
+#Soilread1=read.csv("OtherSoilDataClean.csv", header=T)
+#attach(Soilread1)
+
+#Combine all soil data into one dataframe
+#merging both datasets
+#Soildata<-full_join(Soilread1, CNall)
+
+##mapfile
+#METAdata=read.table("MID_Meta.txt", header = T)
+#    Soildata$SiteID<-as.character(Soildata$SiteID)
+#    Soildata$Treenum<-as.character(Soildata$Treenum)
+
+
+    
+#METAfull=full_join(METAdata, Soildata)
+
+##Created a new file with full metadata (couldn't script this because of phyloseq)
+#write.csv(METAfull, file = "MIDMETA_complete.csv")
+
+
+##biom file and map file
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+biom_file="Redwoodfungibiogeo.biom"
+map_file="MIDMETA_complete.txt"
+biomot=import_biom(biom_file, parseFunction=parse_taxonomy_greengenes)
+META=import_qiime_sample_data(map_file)
+
+
+##Rhizonode data
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+biom_file2="RvS_Big.biom"
+map_file2="RvsS_META.txt"
+biomot2=import_biom(biom_file2, parseFunction=parse_taxonomy_greengenes)
+META2=import_qiime_sample_data(map_file2)
+META2$Treenum<-as.character(META2$Treenum)
+```
+Creating phyloseq objects and merging OTU with meta data and removing plant reads
+```{r message=FALSE, warning=FALSE}
+
+##merging OTU and metadata
+Redwoodfungi=merge_phyloseq(biomot, META)
+Structures=merge_phyloseq(biomot2, META2)
+
+##Remove plant reads
+Redwoodfungi<-subset_taxa(Redwoodfungi, Kingdom=="Fungi")
+#Redwoodplant<-subset_taxa(Redwoodfungi, Kingdom=="Plantae")
+Structures<-subset_taxa(Structures, Kingdom=="Fungi")
+
+##Gather only samples (already parameterized OTU with negative controls in phyloseq)
+MID<-subset_samples(Redwoodfungi, Samp=="Sample")
+Structures<-subset_samples(Structures, SiteID=="8")
+
+```
+Rarefaction curves
+```{r}
+MIDtable<-otu_table(MID)
+Structuretable<-otu_table(Structures)
+
+rarecurve(MIDtable, step = 50, col = "blue", label = F)
+
+rarecurve(Structuretable, step = 20, col = "blue", label=F)
+
+```
+Rarification
+```{r message=FALSE, warning=FALSE}
+set.seed(5)
+#RARE=rarefy_even_depth(MID, sample.size = 1000)
+#save(RARE, file = "RARE.rda")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+load(file = "RARE.rda")
+
+set.seed(5)
+#RAREstructure=rarefy_even_depth(Structures, sample.size = 2000)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#save(RAREstructure, file = "RAREstructure.rda")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+load(file = "RAREstructure.rda")
+
+```
+
+Subsetting samples by sample type
+```{r message=FALSE, warning=FALSE}
+##subset by sample type
+Roots<-subset_samples(RARE, SampleType=="Root")
+Soils<-subset_samples(RARE, SampleType=="Soil")
+Glom<-subset_taxa(RARE, Phylum=="Glomeromycota")
+Glomroot<-subset_samples(Glom, SampleType=="Root")
+Glomsoil<-subset_samples(Glom, SampleType=="Soil")
+
+
+##Not rare Gloms
+GlomNR<-subset_taxa(MID, Phylum=="Glomeromycota")
+GlomrootNR<-subset_samples(GlomNR, SampleType=="Root")
+GlomsoilNR<-subset_samples(GlomNR, SampleType=="Soil")
+
+```
+
+Adonis test; vegan
+```{r}
+
+RootsRARE<-subset_samples(RARE, SampleType=="Root")
+SoilsRARE<-subset_samples(RARE, SampleType=="Soil")
+
+##Extracting spp counts to a transposed dataframe
+FUNGIdf<-t(as.data.frame(as(otu_table(RARE), "matrix")))
+Rootdf<-t(as.data.frame(as(otu_table(RootsRARE), "matrix")))
+Soildf<-t(as.data.frame(as(otu_table(SoilsRARE), "matrix")))
+Structuresdf<-t(as.data.frame(as(otu_table(RAREstructure), "matrix")))
+
+##Extracting Metadata    
+Fdf<-(as(sample_data(RARE), "data.frame")) 
+Rdf<-as(sample_data(RootsRARE), "data.frame")
+Sdf<-as(sample_data(SoilsRARE),"data.frame")
+Strucdf<-as(sample_data(RAREstructure),"data.frame")
+
+Samptypedata<-dplyr::select(Strucdf, SampleUnique, SampleType)
+
+##Variance in total, root, and soil fungal comm. across sites
+##This is accounting for the nested design; tree num is nested within Site 
+adonis(FUNGIdf ~ SiteID*SampleType, data=Fdf, strata = Fdf$Treenum, perm=1e3)
+
+
+##Are structures sig different from root sample from which they are collected?
+adonis(Structuresdf~SampleType, data=Strucdf, perm=1e3)
+
+#How much variance does site of collection explain in root+rhizonodes 
+adonis(Structuresdf~SampleType+Treenum, data = Strucdf, permutations = 1e3)
+
+
+library(pairwiseAdonis)
+pairwise.adonis2(Structuresdf ~ SampleType+Treenum, data = Strucdf)
+
+```
+Ordination (NMDS) using default of bray for distance (bray is default method for ordinate function)
+```{r message=FALSE, warning=FALSE}
+ORDtotalvals<-ordinate(RARE, "NMDS")
+ORD<-plot_ordination(RARE, ORDtotalvals, color = "SiteID", shape = "SampleType")+ geom_point(size=3)+
+  Publicationcolors()+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_rect(fill="transparent", colour = "black"),
+        axis.title.y = element_text(angle=90, size = 12, margin = margin(r=3, unit = "mm")),
+        axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+        axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+        axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+        axis.line = element_blank(),
+        axis.ticks.x = element_line(colour = "black"),
+        axis.ticks.y = element_line(colour = "black"),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.key = element_rect(fill="transparent", colour = NA),
+        legend.position =c(0.09,0.75),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =10),
+        legend.spacing = unit(0, "mm"),
+        legend.background = element_rect(fill = "transparent", colour = NA),
+        plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+        strip.background=element_rect(fill="transparent", colour=NA),
+        strip.text = element_text(face="bold"))
+ORD
+
+
+##Rootstructures
+set.seed(33)
+StructuresNMDS<-ordinate(RAREstructure, "NMDS")
+
+StructuresORD<-plot_ordination(RAREstructure, StructuresNMDS,color = "SampleType")+ 
+  Publicationcolors()+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_rect(fill="transparent", colour = "black"),
+        axis.title.y = element_text(angle=90, size = 12, margin = margin(r=3, unit = "mm")),
+        axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+        axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+        axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+        axis.line = element_blank(),
+        axis.ticks.x = element_line(colour = "black"),
+        axis.ticks.y = element_line(colour = "black"),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.key = element_rect(fill="transparent", colour = NA),
+        legend.position =c(0.85,0.88),
+        legend.key.size= unit(3, "mm"),
+        legend.text = element_text(size =9),
+        legend.title = element_text(size =9),
+        legend.spacing = unit(0, "mm"),
+        legend.background = element_rect(fill = "transparent", colour = NA),
+        plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+        strip.background=element_rect(fill="transparent", colour=NA),
+        strip.text = element_text(face="bold"))
+
+StructuresORD
+```
+Bar charts
+```{r message=FALSE, warning=FALSE}
+
+Top100= names(sort(taxa_sums(RARE), TRUE)[1:100])
+Top100=prune_taxa(Top100, RARE)
+
+Top100_Site1<-subset_samples(Top100, SiteID=="1")
+Top100_Site2<-subset_samples(Top100, SiteID=="2")
+Top100_Site3<-subset_samples(Top100, SiteID=="3")
+Top100_Site4<-subset_samples(Top100, SiteID=="4")
+Top100_Site5<-subset_samples(Top100, SiteID=="5")
+Top100_Site6<-subset_samples(Top100, SiteID=="6")
+Top100_Site7<-subset_samples(Top100, SiteID=="7")
+Top100_Site8<-subset_samples(Top100, SiteID=="8")
+
+
+Site1root<- subset_samples(Top100_Site1, SampleType=="Root")
+Site1soil<-subset_samples(Top100_Site1, SampleType=="Soil")
+Site2root<- subset_samples(Top100_Site2, SampleType=="Root")
+Site2soil<-subset_samples(Top100_Site2, SampleType=="Soil")
+Site3root<- subset_samples(Top100_Site3, SampleType=="Root")
+Site3soil<-subset_samples(Top100_Site3, SampleType=="Soil")
+Site4root<- subset_samples(Top100_Site4, SampleType=="Root")
+Site4soil<-subset_samples(Top100_Site4, SampleType=="Soil")
+Site5root<- subset_samples(Top100_Site5, SampleType=="Root")
+Site5soil<-subset_samples(Top100_Site5, SampleType=="Soil")
+Site6root<- subset_samples(Top100_Site6, SampleType=="Root")
+Site6soil<-subset_samples(Top100_Site6, SampleType=="Soil")
+Site7root<- subset_samples(Top100_Site7, SampleType=="Root")
+Site7soil<-subset_samples(Top100_Site7, SampleType=="Soil")
+Site8root<- subset_samples(Top100_Site8, SampleType=="Root")
+Site8soil<-subset_samples(Top100_Site8, SampleType=="Soil")
+
+
+Site1root <- Site1root %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site1soil <- Site1soil %>%
+  psmelt() %>%                                       
+  arrange(Phylum)
+
+Site2root <- Site2root %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site2soil <- Site2soil %>%
+  psmelt() %>%                                       
+  arrange(Phylum)
+
+Site3root <- Site3root %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site3soil <- Site3soil %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site4root <- Site4root %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site4soil <- Site4soil %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site5root <- Site5root %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site5soil <- Site5soil %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site6root <- Site6root %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site6soil <- Site6soil %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site7root <- Site7root %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site7soil <- Site7soil %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site8root <- Site8root %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site8soil <- Site8soil %>%
+  psmelt() %>%                                       
+  arrange(Phylum) 
+
+Site1root$SampleType <- "Root"
+Site1soil$SampleType <- "Soil"
+Site2root$SampleType <- "Root"
+Site2soil$SampleType <- "Soil"
+Site3root$SampleType <- "Root"
+Site3soil$SampleType <- "Soil"
+Site4root$SampleType <- "Root"
+Site4soil$SampleType <- "Soil"
+Site5root$SampleType <- "Root"
+Site5soil$SampleType <- "Soil"
+Site6root$SampleType <- "Root"
+Site6soil$SampleType <- "Soil"
+Site7root$SampleType <- "Root"
+Site7soil$SampleType <- "Soil"
+Site8root$SampleType <- "Root"
+Site8soil$SampleType <- "Soil"
+
+Site1root$SiteID <- "1"
+Site1soil$SiteID <- "1"
+Site2root$SiteID <- "2"
+Site2soil$SiteID <- "2"
+Site3root$SiteID <- "3"
+Site3soil$SiteID <- "3"
+Site4root$SiteID <- "4"
+Site4soil$SiteID <- "4"
+Site5root$SiteID <- "5"
+Site5soil$SiteID <- "5"
+Site6root$SiteID <- "6"
+Site6soil$SiteID <- "6"
+Site7root$SiteID <- "7"
+Site7soil$SiteID <- "7"
+Site8root$SiteID <- "8"
+Site8soil$SiteID <- "8"
+
+
+
+barcolors= c(Agaricales="#2F4236", Atheliales ="#9F993D", Boletales="#576A00", Chaetothyriales="#560d0d", Eurotiales="#896c39", Geastrales="#6f0000", Geoglossales="#934D4B", Gomphales="#8D2D56", Helotiales="#2B193E", Hypocreales="#fdbe02",Hysterangiales="#0F7E94",Mortierellales="#487ABC",Mucorales="#55A049",Mytilinidales="#203453",Pezizales="#40318D", Pleosporales="#136207", Polyporales="#c9ffe5", Russulales="#e77797", Sordariales="#67B6BD", Thelebolales="#fdfd96", Thelephorales="#BFCE72", Trechisporales="#babed4", Venturiales="#383838")
+
+
+##join all sets
+bars_all<- rbind(Site1root, Site1soil,Site2root, Site2soil, Site3root, Site3soil, Site4root, Site4soil,
+                 Site5root, Site5soil, Site6root, Site6soil, Site7root, Site7soil, Site8root, Site8soil)
+
+bars_all_agg <- bars_all %>%
+  group_by(Order, SiteID, SampleType) %>%
+  summarise_at(vars(Abundance), list(sum), na.rm=TRUE)
+
+
+##plot
+barplot<-ggplot(data = filter(bars_all_agg), aes(SiteID, Abundance, fill = Order )) +
+  facet_wrap(~SampleType,scales="free_x", ncol = 1, strip.position = "right") +
+  geom_bar(stat = "identity", position = position_fill(), linetype=2) +
+  guides(fill = guide_legend(ncol = 1))+
+  scale_fill_manual(values = barcolors, na.value="#E8E8E8", labels=c("Agaricales", "Atheliales", "Boletales","Chaetothyriales", "Eurotiales", "Geastrales", "Geoglossales", "Gomphales", "Helotiales", "Hypocreales","Hysterangiales","Mortierellales","Mucorales","Mytilinidales","Pezizales", "Pleosporales", "Polyporales", "Russulales", "Sordariales", "Thelebolales", "Thelephorales", "Trechisporales", "Venturiales", "Unassigned"), name="Fungal Order")+ 
+            scale_y_continuous("Relative abundance")+
+            xlab("Site ID")+
+            theme(
+            text = element_text(family = "Helvetica"),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            strip.background.x=element_rect(fill="LightGray",colour = NA),
+            strip.background.y=element_rect(fill="LightGray",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title.y = element_text(angle=90, size = 14, margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(angle=0, size=14, 
+                                       margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=14, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_blank(),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.key = element_rect(fill="transparent", colour = NA),
+            legend.box = "horizontal",
+            legend.key.size= unit(4, "mm"),
+            legend.text = element_text(size =11),
+            legend.spacing = unit(0, "mm"),
+            legend.background = element_rect(fill = "transparent", colour = NA),
+            plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+            strip.background=element_rect(fill="transparent", colour=NA),
+            strip.text = element_text(face="bold"))
+barplot
+```
+Rhizonode taxa (all fungi)
+```{r}
+Top500rhizo= names(sort(taxa_sums(RAREstructure), TRUE)[1:500])
+Top500rhizo=prune_taxa(Top500rhizo, RAREstructure)
+
+RootsRhiz<-subset_samples(Top500rhizo, SampleType=="Rhizonode")
+RootsRoot<-subset_samples(Top500rhizo, SampleType=="Root")
+RootsSoils<-subset_samples(Top500rhizo, SampleType=="Soil")
+
+RhizoT1<-subset_samples(RootsRhiz, Treenum=="1")
+RhizoT2<-subset_samples(RootsRhiz, Treenum=="2")
+RhizoT3<-subset_samples(RootsRhiz, Treenum=="3")
+RhizoT4<-subset_samples(RootsRhiz, Treenum=="4")
+RhizoT5<-subset_samples(RootsRhiz, Treenum=="5")
+RhizoT6<-subset_samples(RootsRhiz, Treenum=="6")
+
+
+RootT1<-subset_samples(RootsRoot, Treenum=="1")
+RootT2<-subset_samples(RootsRoot, Treenum=="2")
+RootT3<-subset_samples(RootsRoot, Treenum=="3")
+RootT4<-subset_samples(RootsRoot, Treenum=="4")
+RootT5<-subset_samples(RootsRoot, Treenum=="5")
+RootT6<-subset_samples(RootsRoot, Treenum=="6")
+
+SoilT1<-subset_samples(RootsSoils, Treenum=="1")
+SoilT2<-subset_samples(RootsSoils, Treenum=="2")
+SoilT3<-subset_samples(RootsSoils, Treenum=="3")
+SoilT4<-subset_samples(RootsSoils, Treenum=="4")
+SoilT5<-subset_samples(RootsSoils, Treenum=="5")
+SoilT6<-subset_samples(RootsSoils, Treenum=="6")
+
+
+RootT1 <- RootT1 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RootT2 <- RootT2 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RootT3 <- RootT3 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RootT4 <- RootT4 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RootT5 <- RootT5 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RootT6 <- RootT6 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+
+RhizoT1 <- RhizoT1 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RhizoT2 <- RhizoT2 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RhizoT3 <- RhizoT3 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RhizoT4 <- RhizoT4 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RhizoT5 <- RhizoT5 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+RhizoT6 <- RhizoT6 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+
+SoilT1 <- SoilT1 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+SoilT2 <- SoilT2 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+SoilT3 <- SoilT3 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+SoilT4 <- SoilT4 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+SoilT5 <- SoilT5 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+SoilT6 <- SoilT6 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+
+
+
+RootT1$samptypecode <- "Root"
+RootT2$samptypecode <- "Root"
+RootT3$samptypecode <- "Root"
+RootT4$samptypecode <- "Root"
+RootT5$samptypecode <- "Root"
+RootT6$samptypecode <- "Root"
+RhizoT1$samptypecode <- "Rhizonode"
+RhizoT2$samptypecode <- "Rhizonode"
+RhizoT3$samptypecode <- "Rhizonode"
+RhizoT4$samptypecode <- "Rhizonode"
+RhizoT5$samptypecode <- "Rhizonode"
+RhizoT6$samptypecode <- "Rhizonode"
+SoilT1$samptypecode <- "Soil"
+SoilT2$samptypecode <- "Soil"
+SoilT3$samptypecode <- "Soil"
+SoilT4$samptypecode <- "Soil"
+SoilT5$samptypecode <- "Soil"
+SoilT6$samptypecode <- "Soil"
+
+
+RootT1$Treenumber <- "1"
+RootT2$Treenumber <- "2"
+RootT3$Treenumber <- "3"
+RootT4$Treenumber <- "4"
+RootT5$Treenumber <- "5"
+RootT6$Treenumber <- "6"
+RhizoT1$Treenumber <- "1"
+RhizoT2$Treenumber <- "2"
+RhizoT3$Treenumber <- "3"
+RhizoT4$Treenumber <- "4"
+RhizoT5$Treenumber <- "5"
+RhizoT6$Treenumber <- "6"
+SoilT1$Treenumber <- "1"
+SoilT2$Treenumber <- "2"
+SoilT3$Treenumber <- "3"
+SoilT4$Treenumber <- "4"
+SoilT5$Treenumber <- "5"
+SoilT6$Treenumber <- "6"
+
+Rhizobars<-rbind(RootT1, RootT2,RootT3, RootT4, RootT5, RootT6, SoilT1, SoilT2,SoilT3, SoilT4, SoilT5, SoilT6, RhizoT1, RhizoT2, RhizoT3, RhizoT4,RhizoT5, RhizoT6)
+
+Rhizobars_agg <- Rhizobars %>%
+  group_by(Phylum, Treenumber, samptypecode) %>%
+  summarise_at(vars(Abundance), list(sum), na.rm=TRUE)
+
+Rhizonodebarcolors= c(Ascomycota="#2B193E", Basidiomycota ="#2F4236", Chytridiomycota="#9F993D", Monoblepharidomycota="#800000", Glomeromycota="#fdbe02", Mortierellomycota="#487ABC", Mucoromycota="#23395d", Rozellomycota="#cc1100")
+
+
+
+Rhizobarplot<-ggplot(data = filter(Rhizobars_agg), aes(Treenumber, Abundance, fill = Phylum)) +
+  facet_wrap(~samptypecode,scales="free_x", ncol = 1, strip.position = "right") +
+  geom_bar(stat = "identity", position = position_fill()) +
+  guides(fill = guide_legend(ncol = 1))+
+ scale_fill_manual(values = Rhizonodebarcolors, na.value="#E8E8E8", labels=c("Ascomycota", "Basidiomycota", "Chytridiomycota", "Glomeromycota", "Monoblepharidomycota","Mortierellomycota","Mucoromycota", "Rozellomycota", "Unassigned"), name="Fungal Phylum")+ 
+            scale_y_continuous("Relative abundance")+
+            xlab("Tree ID")+
+            theme(
+            text = element_text(family = "Helvetica"),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            strip.background.x=element_rect(fill="LightGray",colour = NA),
+            strip.background.y=element_rect(fill="LightGray",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title.y = element_text(angle=90, size = 14, margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(angle=0, size=14, 
+                                       margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=14, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_blank(),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.key = element_rect(fill="transparent", colour = NA),
+            legend.box = "horizontal",
+            legend.key.size= unit(4, "mm"),
+            legend.text = element_text(size =11),
+            legend.spacing = unit(0, "mm"),
+            legend.background = element_rect(fill = "transparent", colour = NA),
+            plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+            strip.background=element_rect(fill="transparent", colour=NA),
+            strip.text = element_text(face="bold"))
+
+```
+
+Rhizonode AMF taxa
+```{r echo=TRUE, message=TRUE, warning=TRUE}
+GlomsRootsRhiz<-subset_samples(RAREstructure, SampleType=="Rhizonode")
+GlomsRootsRhiz<-subset_taxa(GlomsRootsRhiz, Phylum=="Glomeromycota")
+
+GlomsRootsRoot<-subset_samples(RAREstructure, SampleType=="Root")
+GlomsRootsRoot<-subset_taxa(GlomsRootsRoot, Phylum=="Glomeromycota")
+
+GlomsRootsSoils<-subset_samples(RAREstructure, SampleType=="Soil")
+GlomsRootsSoils<-subset_taxa(GlomsRootsSoils, Phylum=="Glomeromycota")
+
+GlomrhizoT1<-subset_samples(GlomsRootsRhiz, Treenum=="1")
+GlomrhizoT2<-subset_samples(GlomsRootsRhiz, Treenum=="2")
+GlomrhizoT3<-subset_samples(GlomsRootsRhiz, Treenum=="3")
+GlomrhizoT4<-subset_samples(GlomsRootsRhiz, Treenum=="4")
+GlomrhizoT5<-subset_samples(GlomsRootsRhiz, Treenum=="5")
+GlomrhizoT6<-subset_samples(GlomsRootsRhiz, Treenum=="6")
+
+
+
+GlomrootT1<-subset_samples(GlomsRootsRoot, Treenum=="1")
+GlomrootT2<-subset_samples(GlomsRootsRoot, Treenum=="2")
+GlomrootT3<-subset_samples(GlomsRootsRoot, Treenum=="3")
+GlomrootT4<-subset_samples(GlomsRootsRoot, Treenum=="4")
+GlomrootT5<-subset_samples(GlomsRootsRoot, Treenum=="5")
+GlomrootT6<-subset_samples(GlomsRootsRoot, Treenum=="6")
+
+
+GlomsoilT1<-subset_samples(GlomsRootsSoils, Treenum=="1")
+GlomsoilT2<-subset_samples(GlomsRootsSoils, Treenum=="2")
+GlomsoilT3<-subset_samples(GlomsRootsSoils, Treenum=="3")
+GlomsoilT4<-subset_samples(GlomsRootsSoils, Treenum=="4")
+GlomsoilT5<-subset_samples(GlomsRootsSoils, Treenum=="5")
+GlomsoilT6<-subset_samples(GlomsRootsSoils, Treenum=="6")
+
+
+GlomrootT1 <- GlomrootT1 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrootT2 <- GlomrootT2 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrootT3 <- GlomrootT3 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrootT4 <- GlomrootT4 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrootT5 <- GlomrootT5 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrootT6 <- GlomrootT6 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+
+GlomrhizoT1 <- GlomrhizoT1 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrhizoT2 <- GlomrhizoT2 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrhizoT3 <- GlomrhizoT3 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrhizoT4 <- GlomrhizoT4 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrhizoT5 <- GlomrhizoT5 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomrhizoT6 <- GlomrhizoT6 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+
+GlomsoilT1 <- GlomsoilT1 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomsoilT2 <- GlomsoilT2 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomsoilT3 <- GlomsoilT3 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomsoilT4 <- GlomsoilT4 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomsoilT5 <- GlomsoilT5 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+GlomsoilT6 <- GlomsoilT6 %>%
+  psmelt() %>%                                       
+  arrange(Family) 
+
+
+
+GlomrootT1$samptypecode <- "Root"
+GlomrootT2$samptypecode <- "Root"
+GlomrootT3$samptypecode <- "Root"
+GlomrootT4$samptypecode <- "Root"
+GlomrootT5$samptypecode <- "Root"
+GlomrootT6$samptypecode <- "Root"
+GlomrhizoT1$samptypecode <- "Rhizonode"
+GlomrhizoT2$samptypecode <- "Rhizonode"
+GlomrhizoT3$samptypecode <- "Rhizonode"
+GlomrhizoT4$samptypecode <- "Rhizonode"
+GlomrhizoT5$samptypecode <- "Rhizonode"
+GlomrhizoT6$samptypecode <- "Rhizonode"
+GlomsoilT1$samptypecode <- "Soil"
+GlomsoilT2$samptypecode <- "Soil"
+GlomsoilT3$samptypecode <- "Soil"
+GlomsoilT4$samptypecode <- "Soil"
+GlomsoilT5$samptypecode <- "Soil"
+GlomsoilT6$samptypecode <- "Soil"
+
+
+GlomrootT1$Treenumber <- "1"
+GlomrootT2$Treenumber <- "2"
+GlomrootT3$Treenumber <- "3"
+GlomrootT4$Treenumber <- "4"
+GlomrootT5$Treenumber <- "5"
+GlomrootT6$Treenumber <- "6"
+GlomrhizoT1$Treenumber <- "1"
+GlomrhizoT2$Treenumber <- "2"
+GlomrhizoT3$Treenumber <- "3"
+GlomrhizoT4$Treenumber <- "4"
+GlomrhizoT5$Treenumber <- "5"
+GlomrhizoT6$Treenumber <- "6"
+GlomsoilT1$Treenumber <- "1"
+GlomsoilT2$Treenumber <- "2"
+GlomsoilT3$Treenumber <- "3"
+GlomsoilT4$Treenumber <- "4"
+GlomsoilT5$Treenumber <- "5"
+GlomsoilT6$Treenumber <- "6"
+
+Glombars<-rbind(GlomrootT1, GlomrootT2,GlomrootT3, GlomrootT4, GlomrootT5, GlomrootT6, GlomsoilT1, GlomsoilT2,GlomsoilT3, GlomsoilT4, GlomsoilT5, GlomsoilT6, GlomrhizoT1, GlomrhizoT2, GlomrhizoT3, GlomrhizoT4,GlomrhizoT5, GlomrhizoT6)
+
+Glombars_agg <- Glombars %>%
+  dplyr::group_by(Family, Treenumber, samptypecode) %>%
+ dplyr:: summarise_at(vars(Abundance), list(sum), na.rm=TRUE)
+
+AMbarcolors= c(Acaulosporaceae="#2B193E", Ambisporaceae ="#9F993D", Archaeosporaceae="#576A00", Claroideoglomeraceae="#487ABC", Diversisporaceae="#fdbe02", Glomeraceae="#2F4236")
+
+Glombarplot<-ggplot(data = filter(Glombars_agg), aes(Treenumber, Abundance, fill = Family)) +
+  facet_wrap(~samptypecode,scales="free_x", ncol = 1, strip.position = "right") +
+  geom_bar(stat = "identity", position = position_fill()) +
+  guides(fill = guide_legend(ncol = 1))+
+  scale_fill_manual(values = AMbarcolors, na.value="#E8E8E8", labels=c("Acaulosporaceae", "Ambisporaceae","Archaeosporaceae", "Claroideoglomeraceae", "Diversisporaceae", "Glomeraceae", "Unassigned"), name="AMF Family")+ 
+            scale_y_continuous("Relative abundance")+
+            xlab("Tree ID")+
+            theme(
+            text = element_text(family = "Helvetica"),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            strip.background.x=element_rect(fill="LightGray",colour = NA),
+            strip.background.y=element_rect(fill="LightGray",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title.y = element_text(angle=90, size = 14, margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(angle=0, size=14, 
+                                       margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=14, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_blank(),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.key = element_rect(fill="transparent", colour = NA),
+            legend.box = "horizontal",
+            legend.key.size= unit(4, "mm"),
+            legend.text = element_text(size =11),
+            legend.spacing = unit(0, "mm"),
+            legend.background = element_rect(fill = "transparent", colour = NA),
+            plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+            strip.background=element_rect(fill="transparent", colour=NA),
+            strip.text = element_text(face="bold"))
+```
+
+Funguild
+```{r}
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData/")
+guildsecto<-read.csv("Redwoodfungibiogeo.guilds.csv", header =T)
+guildsecto <- guildsecto %>% dplyr::rename(OTU = X.OTU.ID) 
+guildsecto<-dplyr::select(guildsecto,OTU,Guild, Confidence.Ranking, Notes)
+
+OTUrootraretemp<-as(otu_table(Roots), "matrix")
+OTUrareroot<-as.data.frame(OTUrootraretemp)
+
+tempmatchguildsroots<-OTUrareroot
+tempmatchguildsroots$OTU<-rownames(OTUrareroot)
+
+##samples containing contaminant plant DNA (plus redwood DNA too)
+#MG4WRoot MG4WRoot PC2WRoot AR3NRoot BB2ERoot BB2NRoot BB2WRoot BB3NRoot JS3ERoot
+
+##removing any samples with contaminant plant DNA
+tempmatchguildsrootsc<-dplyr::select(tempmatchguildsroots, c(-MG4WRoot, -MG4WRoot, -PC2WRoot, -AR3NRoot, -BB2ERoot, -BB2NRoot, -BB2WRoot, -BB3NRoot, -JS3ERoot))
+
+OTUsoilraretemp<-as(otu_table(Soils), "matrix")
+OTUraresoil<-as.data.frame(OTUsoilraretemp)
+
+tempmatchguildssoils<-OTUraresoil
+tempmatchguildssoils$OTU<-rownames(OTUraresoil)
+
+rootguilds<-inner_join(tempmatchguildsrootsc, guildsecto)
+soilguilds<-inner_join(tempmatchguildssoils, guildsecto)
+
+unassignedsoils<-sum(soilguilds$Notes=="Unassigned", na.rm = TRUE)
+totalcountsoils<-length(soilguilds$Notes)
+(totalcountsoils-unassignedsoils)/totalcountsoils
+##49.2973% of OTUs were assigned via funguild
+##(OTUs aren't actually dropped here; keeps all OTUs even if they didnt appear in soils and only in roots, just shows as a zero, so this is the proportion of OTUs assigned in total)
+
+Rootectos<-rootguilds%>% 
+  filter(Guild==c("Ectomycorrhizal", "Ectomycorrhizal-Endophyte-Ericoid Mycorrhizal-Litter Saprotroph-Orchid Mycorrhizal", "Ectomycorrhizal-Fungal Parasite", "Ectomycorrhizal-Orchid Mycorrhizal-Root Associated Biotroph", "Ectomycorrhizal-Undefined Saprotroph", "Ectomycorrhizal-Fungal Parasite-Plant Pathogen-Wood Saprotroph", "Dung Saprotroph-Ectomycorrhizal-Soil Saprotroph-Wood Saprotroph"))
+
+Soilectos<-soilguilds%>% 
+  filter(Guild==c("Ectomycorrhizal", "Ectomycorrhizal-Endophyte-Ericoid Mycorrhizal-Litter Saprotroph-Orchid Mycorrhizal", "Ectomycorrhizal-Fungal Parasite", "Ectomycorrhizal-Orchid Mycorrhizal-Root Associated Biotroph", "Ectomycorrhizal-Undefined Saprotroph", "Ectomycorrhizal-Fungal Parasite-Plant Pathogen-Wood Saprotroph", "Dung Saprotroph-Ectomycorrhizal-Soil Saprotroph-Wood Saprotroph"))
+
+
+Rootectosums<-colSums((Rootectos[,1:103]/1000)*100)
+Rootectosumsdf=as.data.frame(Rootectosums)
+Rootectosumsdf$SampleUnique=rownames(Rootectosumsdf)
+Rootectosumsdf=left_join(Rootectosumsdf,Rdf)
+colnames(Rootectosumsdf)[1]<-"Ectopercent"
+
+Soilectosums<-colSums((Soilectos[,1:118]/1000)*100)
+Soilectosumsdf=as.data.frame(Soilectosums)
+Soilectosumsdf$SampleUnique=rownames(Soilectosumsdf)
+Soilectosumsdf=left_join(Soilectosumsdf,Sdf)
+colnames(Soilectosumsdf)[1]<-"Ectopercent"
+
+Ectoproportions<-full_join(Soilectosumsdf,Rootectosumsdf)
+
+
+Ectorootbarplot<-ggplot(data = Ectoproportions, aes(SiteID, Ectopercent, color=SiteID))+
+  geom_point()+
+  facet_wrap(~SampleType, ncol=1, scales = "free_y",
+             strip.position = "right")+
+  labs(x="Site ID", y="Percent ectomycorrhizal reads (%)")+
+  Publicationcolors()+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_rect(fill="transparent", colour = "black"),
+        axis.title.y = element_text(angle=90, size = 12, margin = margin(r=3, unit = "mm")),
+        axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+        axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+        axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+        axis.line = element_blank(),
+        axis.ticks.x = element_line(colour = "black"),
+        axis.ticks.y = element_line(colour = "black"),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "right",
+        legend.background = element_rect(fill="transparent",
+                                         colour = NA),
+        legend.key.size= unit(4, "mm"),
+        legend.key = element_rect(fill="transparent", colour = NA))
+
+
+
+##Proportion of OTUs matched in funguild
+HasNoReadsRoots <- rowSums(otu_table(Roots))==0
+nrow(otu_table(Roots))-sum(HasNoReadsRoots)
+##There are 1484 OTUs total in roots
+
+HasNoReadsSoils <- rowSums(otu_table(Soils))==0
+nrow(otu_table(Soils))-sum(HasNoReadsSoils)
+##There are 2304 OTUs total in soils
+
+
+```
+GDM Step 1: OTU Data for GDM
+```{r message=FALSE, warning=FALSE}
+library(raster)
+library(sp)
+
+##Calculating k (decomp coeff)
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+redwoodsites<-read.table("MIDMETA_complete.txt", header = T, sep="", dec=".")
+
+redwoodsitesroots<-dplyr::filter(redwoodsites, SampleType=="Root")
+redwoodsitessoils<-dplyr::filter(redwoodsites, SampleType=="Soil")
+
+clim <- raster::getData('worldclim', download = TRUE, var = 'bio', res = 10)
+clim.ca=raster::crop(clim,c(-125,-118,34,45))
+coordsroots<-data.frame(redwoodsitesroots$Longitude, redwoodsitesroots$Latitude)
+coordssoils<-data.frame(redwoodsitessoils$Longitude, redwoodsitessoils$Latitude)
+
+climr<-clim.ca[[c(10, 18)]]
+points <- SpatialPoints(coordsroots, proj4string=climr@crs)
+values<-raster::extract(climr, points)
+SiteNum<-redwoodsitesroots$SiteID
+df<-cbind.data.frame(coordinates(points), values, SiteNum)
+df
+
+clims<-clim.ca[[c(10, 18)]]
+pointsS <- SpatialPoints(coordssoils, proj4string=clims@crs)
+values<-raster::extract(clims, pointsS)
+SiteNumS<-redwoodsitessoils$SiteID
+dfS<-cbind.data.frame(coordinates(pointsS), values, SiteNumS)
+dfS
+
+library(dplyr)
+df2=df %>% 
+  rowwise()%>% 
+  dplyr::mutate(bio10_C=bio10/10,
+                  bio18_in_m=(bio18/1000)) 
+
+df2s=dfS%>% 
+  rowwise()%>% 
+  dplyr::mutate(bio10_C=bio10/10,
+                  bio18_in_m=(bio18/1000)) 
+
+T=df2$bio10_C
+P=df2$bio18_in_m
+k = exp(0.095*T - 0.00014 * T^2) * (1 - exp(-1.21 * P))
+dataframe<-list(SampleUnique=redwoodsitesroots$SampleUnique, 
+           k=k)
+df<-dplyr::bind_rows(dataframe)
+df<-dplyr::arrange(df, SampleUnique)
+
+T=df2s$bio10_C
+P=df2s$bio18_in_m
+k = exp(0.095*T - 0.00014 * T^2) * (1 - exp(-1.21 * P))
+dataframe<-list(SampleUnique=redwoodsitessoils$SampleUnique, 
+           k=k)
+dfS<-dplyr::bind_rows(dataframe)
+dfS<-dplyr::arrange(dfS, SampleUnique)
+
+
+##write the rarified meta data into a data frame
+dfroot<-as(sample_data(Roots), "data.frame")
+dfsoil<-as(sample_data(Soils),"data.frame")
+
+dfroot<-dplyr::select(dfroot,-RevBarcodeSequence, -DemuxReads, -phinchID, -Treatment, -ReversePrimer, -BarcodeSequence, -LinkerPrimerSequence, -LinkerPrimerSequence)
+
+dfsoil<-dplyr::select(dfsoil,-RevBarcodeSequence, -DemuxReads, -phinchID, -Treatment, -ReversePrimer, -BarcodeSequence, -LinkerPrimerSequence, -LinkerPrimerSequence)
+
+dfroot<-left_join(dfroot, df)
+dfsoil<-left_join(dfsoil, dfS)
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData/")
+landscapemets<-read.csv("landscapeMetrics.csv")
+
+landscapemets$SiteID<-as.factor(c(1,2,3,4,5,6,7,8))
+landscapemets<-dplyr::select(landscapemets, -site)
+
+dfsoil<-dplyr::full_join(dfsoil, landscapemets)
+dfroot<-dplyr::full_join(dfroot,landscapemets)
+
+dfsoilfilter<-dplyr::filter(dfsoil, Treenum=="1",Cardinaldirection=="N")
+
+Decompplot<-ggplot(data=dfsoilfilter, aes(SiteID, k, color=SiteID))+
+                     geom_point(aes(), size=2)+
+  labs(x="Site ID", y="Decomposition coefficient (k)")+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_rect(fill="transparent", colour = "black"),
+        axis.title.y = element_text(angle=90, size = 12, margin = margin(r=3, unit = "mm")),
+        axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+        axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+        axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+        axis.line = element_blank(),
+        axis.ticks.x = element_line(colour = "black"),
+        axis.ticks.y = element_line(colour = "black"),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "right",
+        legend.background = element_rect(fill="transparent",
+                                         colour = NA),
+        legend.key = element_rect(fill="transparent", colour = NA),
+        plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+        strip.background=element_rect(fill="transparent", colour=NA),
+        strip.text = element_text(face="bold"))
+Decompplot
+
+
+##write a datatable of rarified data 
+OTUrootraretemp<-as(otu_table(Roots), "matrix")
+OTUrareroot<-as.data.frame(OTUrootraretemp)
+
+OTUsoilraretemp<-as(otu_table(Soils), "matrix")
+OTUraresoil<-as.data.frame(OTUsoilraretemp)
+
+##Extract the rare data
+GDMrareroot<-as.data.frame(t(OTUrareroot))
+GDMraresoil<-as.data.frame(t(OTUraresoil))
+
+#append SampleID
+SampleUnique<-dfroot$SampleUnique
+GDMrareroot<-cbind(SampleUnique, GDMrareroot)
+SampleUnique<-dfsoil$SampleUnique
+GDMraresoil<-cbind(SampleUnique, GDMraresoil)
+
+
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#write.csv(GDMrareroot, "FungiGDM_rareroot.csv")
+#write.csv(GDMraresoil, "FungiGDM_raresoil.csv")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+bioDroot<-read.csv("FungiGDM_rareroot.csv", header =T)
+bioDsoil<-read.csv("FungiGDM_raresoil.csv", header=T)
+
+#remove extraneous columns from getting names formatted between files
+bioDroot<-dplyr::select(bioDroot,-X)
+bioDsoil<-dplyr::select(bioDsoil,-X)
+
+##AMF (removing samples with no AMF present)
+glomsumcounts<-as.data.frame(sort(sample_sums(GlomrootNR)))
+GlomrootNRc<-prune_samples(sample_sums(GlomrootNR)>0, GlomrootNR)
+glomsumcountsc<-as.data.frame(sort(sample_sums(GlomrootNRc)))
+
+glomsumcountssoils<-as.data.frame(sort(sample_sums(GlomsoilNR)))
+GlomsoilNRc<-prune_samples(sample_sums(GlomsoilNR)>0, GlomsoilNR)
+glomsumcountsoilsc<-as.data.frame(sort(sample_sums(GlomsoilNRc)))
+
+##Gloms roots
+OTUglomsroots<-as(otu_table(GlomrootNRc), "matrix")
+OTUglomsroots<-as.data.frame(OTUglomsroots)
+GDMglomroots<-as.data.frame(t(OTUglomsroots))
+#append SampleID
+GDMglomroots$SampleUnique<-rownames(GDMglomroots)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#write.csv(GDMglomroots, "GDMglomroots.csv")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+bioDglomroots<-read.csv("GDMglomroots.csv", header =T)
+bioDglomroots<-dplyr::select(bioDglomroots,-X)
+
+##Gloms soils
+#OTUglomsoils<-as(otu_table(GlomsoilNRc), "matrix")
+#OTUglomsoils<-as.data.frame(OTUglomsoils)
+#GDMglomsoils<-as.data.frame(t(OTUglomsoils))
+#append SampleID
+#GDMglomsoils$SampleUnique<-rownames(GDMglomsoils)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#write.csv(GDMglomsoils, "GDMglomsoils.csv")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+bioDglomsoils<-read.csv("GDMglomsoils.csv", header =T)
+bioDglomsoils<-dplyr::select(bioDglomsoils,-X)
+
+
+##Trophic modes
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData/")
+guilds<-read.csv("Redwoodfungibiogeo.guilds.csv", header =T)
+guilds <- guilds %>% dplyr::rename(OTU = X.OTU.ID) 
+guilds<-dplyr::select(guilds,OTU,Trophic.Mode)
+
+tempmatchguildsoils<-OTUraresoil
+tempmatchguildsoils$OTU<-rownames(OTUraresoil)
+
+tempmatchguildsroots<-OTUrareroot
+tempmatchguildsroots$OTU<-rownames(OTUrareroot)
+
+soilguilds<-inner_join(tempmatchguildsoils, guilds)
+rootguilds<-inner_join(tempmatchguildsroots, guilds)
+
+
+soilguildssaprobes<-soilguilds%>% 
+  filter(Trophic.Mode=="Saprotroph")
+soilguildssaprobes<-dplyr::select(soilguildssaprobes,-OTU,-Trophic.Mode)
+##all samples have counts
+colSums(soilguildssaprobes)<0
+GDMsoilsaps<-as.data.frame(t(soilguildssaprobes))
+#append SampleID
+GDMsoilsaps$SampleUnique<-rownames(GDMsoilsaps)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#write.csv(GDMsoilsaps, "GDMsoilsaps.csv")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+bioDsoilsaps<-read.csv("GDMsoilsaps.csv", header =T)
+#remove extraneous columns from getting names formatted between files
+bioDsoilsaps<-dplyr::select(bioDsoilsaps,-X)
+
+#symbiotrophs
+soilguildsymbio<-soilguilds%>% 
+  filter(Trophic.Mode=="Symbiotroph")
+soilguildsymbio<-dplyr::select(soilguildsymbio,-OTU,-Trophic.Mode)
+#all samples have counts
+sort(colSums(soilguildsymbio)>0)
+##remove samples with no symbiotrophs
+soilguildsymbio<-soilguildsymbio[, apply(soilguildsymbio[1:(ncol(soilguildsymbio))], 2, sum)!=0]
+
+GDMsoilsymbio<-as.data.frame(t(soilguildsymbio))
+#append SampleID
+GDMsoilsymbio$SampleUnique<-rownames(GDMsoilsymbio)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#write.csv(GDMsoilsymbio, "GDMsoilsymbio.csv")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+bioDsoilsymbio<-read.csv("GDMsoilsymbio.csv", header =T)
+#remove extraneous columns from getting names formatted between files
+bioDsoilsymbio<-dplyr::select(bioDsoilsymbio,-X)
+
+
+#pathogens
+soilguildspatho<-soilguilds%>% 
+  filter(Trophic.Mode=="Pathotroph")
+soilguildspatho<-dplyr::select(soilguildspatho,-OTU,-Trophic.Mode)
+##all samples have counts
+colSums(soilguildspatho)<0
+soilguildspatho<-soilguildspatho[, apply(soilguildspatho[1:(ncol(soilguildspatho))], 2, sum)!=0]
+GDMsoilpatho<-as.data.frame(t(soilguildspatho))
+
+#append SampleID
+GDMsoilpatho$SampleUnique<-rownames(GDMsoilpatho)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#write.csv(GDMsoilpatho, "GDMsoilpatho.csv")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+bioDsoilpatho<-read.csv("GDMsoilpatho.csv", header =T)
+#remove extraneous columns from getting names formatted between files
+bioDsoilpatho<-dplyr::select(bioDsoilpatho,-X)
+
+```
+Step 2: Environmental Data for GDM	
+```{r message=FALSE, warning=FALSE}
+##Pulling all of the potential data that I want to test in the data frame
+predD_root<-dplyr::select(dfroot, SampleUnique, aet, djf, jja, pH, FINALP, CEC, CNratio, Latitude, Longitude, ppt, tmn, tmx, k, WEDG,EDG, simpson, redwoodPercent, SiteID)
+predD_soil<-dplyr::select(dfsoil, SampleUnique, aet, djf, jja, pH, FINALP, CEC, CNratio, Latitude, Longitude, ppt, tmn, tmx, k, WEDG,EDG, simpson, redwoodPercent, SiteID)
+
+##glom roots
+dfglomroot<-as(sample_data(GlomrootNRc),"data.frame")
+dfglomroot<-dplyr::full_join(dfglomroot, landscapemets)
+dfglomroot<-full_join(dfglomroot, df)
+write.csv(dfglomroot, "GDMdfglomroot.csv")
+dfglomroot<-read.csv("GDMdfglomroot.csv", header =T)
+
+predD_glomroot<-dplyr::select(dfglomroot, SampleUnique, aet, djf, jja, pH, FINALP, CEC, CNratio, Latitude, Longitude, ppt, tmn, tmx, k, EDG, WEDG, simpson, redwoodPercent, SiteID)
+
+##Had to remove NAs--replaced with same tree sample (only 3 CN ratios had NAs)
+predD_root<-predD_root%>%
+    dplyr::mutate(CNratio=replace_na(CNratio, 
+                                  mean(c(predD_root[51,8],predD_root[48,8]))))
+    ##Correct value for BC4E
+    predD_root[35,8]<-predD_root[36,8]
+
+    
+##Had to remove NAs--replaced with same tree sample (only 3 CN ratios had NAs)
+predD_soil<-predD_soil%>%
+    dplyr::mutate(CNratio=replace_na(CNratio, 
+                                  mean(c(predD_soil[55,8],predD_soil[58,8]))))
+    ##Correct value for BC4E
+    predD_soil[41,8]<-predD_soil[41,8]
+    
+    
+predD_glomroot<-predD_glomroot%>%
+    dplyr::mutate(CNratio=replace_na(CNratio, 
+                        mean(c(predD_glomroot[51,8],
+                               predD_glomroot[52,8]))))
+    ##Correct value for BC4E
+    predD_glomroot[39,8]<-predD_glomroot[40,8]
+predD_glomroot<-na.exclude(predD_glomroot)
+
+```
+
+Step 3: Backwards selection for GDM (removing all non-sig factors in last step here)
+```{r message=FALSE, warning=FALSE}
+
+library(Hmisc)
+matrix <-dplyr::select(dfroot, EDG, WEDG)
+matrix<-as.matrix(matrix)
+corr_ana<-cor(matrix)
+
+#with pvals
+corr_ana2<-rcorr(matrix)
+
+##turn into a table
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+    )
+}
+#cormat : matrix of the correlation coefficients
+#pmat : matrix of the correlation p-values
+
+#For my data
+summary = flattenCorrMatrix(corr_ana2$r, corr_ana2$P)
+summary
+
+##formating
+predD_root<-dplyr::select(predD_root, -CEC, -djf, -jja, -FINALP, -CNratio, -SiteID, -WEDG)
+
+predD_soil<-dplyr::select(predD_soil, -CEC, -djf, -jja, -FINALP, -CNratio, -SiteID, -WEDG)
+
+
+predD_glomroot<-dplyr::select(predD_glomroot,-CEC, -djf, -jja, -FINALP, -CNratio, -SiteID, -WEDG)
+
+```
+
+Step 4: Formatting site-pairs and running backward selections of models
+```{r message=FALSE, warning=FALSE}
+
+library(gdm)
+
+gdmDistroot <- formatsitepair(bioDroot, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", 
+                       YColumn = 
+                         "Latitude", 
+                      sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_root, 
+                    distPreds = NULL, weightType = "equal")
+
+gdmDistsoil <- formatsitepair(bioDsoil, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", YColumn = 
+                         "Latitude",
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_soil, 
+                       distPreds = NULL, weightType = "equal")
+
+
+##Soil saprobes
+gdmDistsoilsaps <- formatsitepair(bioDsoilsaps, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                      siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", 
+                       YColumn = 
+                         "Latitude", 
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_soil, 
+                       distPreds = NULL, weightType = "equal")
+
+##Soil symbiotrophs
+gdmDistsoilsymbio <- formatsitepair(bioDsoilsymbio, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", 
+                       YColumn = 
+                         "Latitude", 
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_soil, 
+                       distPreds = NULL, weightType = "equal")
+##Soil pathogens
+gdmDistsoilpatho <- formatsitepair(bioDsoilpatho, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", 
+                       YColumn = 
+                         "Latitude", 
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_soil, 
+                       distPreds = NULL, weightType = "equal")
+
+
+##Gloms
+gdmDistGLOMSroots <- formatsitepair(bioDglomroots, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", YColumn = 
+                         "Latitude",
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_glomroot, 
+                       distPreds = NULL, weightType = "equal")
+
+#vars <- gdm.varImp(gdmDistroot, geo = TRUE, splines = NULL)
+#save(vars, file = "gdm_roots_modelselection.rda")
+load(file = "gdm_roots_modelselection.rda")
+varsRoots<-as.data.frame(vars[[1]])
+varsRoots2<-as.data.frame(vars[[2]])
+varsRoots3<-as.data.frame(vars[[3]])
+write.csv(varsRoots, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/RootGDMselection.csv", )
+write.csv(varsRoots2, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/RootGDMselection2.csv", )
+write.csv(varsRoots3, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/RootGDMselection3.csv", )
+##geographic and pH
+
+
+#varssoil<-gdm.varImp(gdmDistsoil, geo = TRUE, splines = NULL)
+#save(varssoil, file = "gdm_soils_modelselection.rda")
+load(file = "gdm_soils_modelselection.rda")
+varsSoils<-as.data.frame(varssoil[[1]])
+varsSoils2<-as.data.frame(varssoil[[2]])
+varsSoils3<-as.data.frame(varssoil[[3]])
+##redwoodpercent and geographic
+
+write.csv(varsSoils, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilGDMselection.csv", )
+write.csv(varsSoils2, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilGDMselection2.csv", )
+write.csv(varsSoils3, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilGDMselection3.csv", )
+
+
+#varssoilsaps<-gdm.varImp(gdmDistsoilsaps, geo = TRUE, splines = NULL)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#save(varssoilsaps, file = "gdm_soilssaps_modelselection.rda")
+##Geographic and EDG
+load(file = "gdm_soilssaps_modelselection.rda")
+varssoilsaps[[1]]
+varssoilsaps[[2]]
+varssoilsaps[[3]]
+
+#varssoilsymbio<-gdm.varImp(gdmDistsoilsymbio, geo = TRUE, splines = NULL)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#save(varssoilsymbio, file = "gdm_soilssymbio_modelselection.rda")
+##EDG and redwood percent
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+load(file = "gdm_soilssymbio_modelselection.rda")
+varssoilsymbio[[1]]
+varssoilsymbio[[2]]
+varssoilsymbio[[3]]
+
+#varssoilpatho<-gdm.varImp(gdmDistsoilpatho, geo = FALSE, splines = NULL)
+#setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+#save(varssoilpatho, file = "gdm_soilpathos_modelselection.rda")
+##EDG and ppt
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+load(file = "gdm_soilpathos_modelselection.rda")
+varssoilpatho[[1]]
+varssoilpatho[[2]]
+varssoilpatho[[3]]
+
+#varsrootsglom<-gdm.varImp(gdmDistGLOMSroots, geo = TRUE, splines = NULL)
+#save(varsrootsglom, file = "gdm_glomsroots_modelselection.rda")
+##Geographic and pH
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
+load(file = "gdm_glomsroots_modelselection.rda")
+varsrootsglom[[1]]
+varsrootsglom[[2]]
+varsrootsglom[[3]]
+
+```
+Parameters after backwards model selection
+```{r}
+predD_rootc<-dplyr::select(predD_root, -aet, -ppt, -tmn, -tmx, -k, -EDG, -simpson, -redwoodPercent)
+predD_soilc<-dplyr::select(predD_soil, -aet, -ppt, -tmn, -tmx, -k, -EDG, -simpson, -pH)
+
+predD_soilSapc<-dplyr::select(predD_soil, -aet, -ppt, -tmn, -tmx, -k, -simpson, -pH, -redwoodPercent)
+
+predD_soilSymbioc<-dplyr::select(predD_soil, -aet, -ppt, -tmn, -tmx, -k, -simpson, -pH)
+
+predD_soilPathoc<-dplyr::select(predD_soil, -aet, -tmn, -tmx, -k, -simpson, -pH, -redwoodPercent)
+
+predD_glomrootc<-dplyr::select(predD_glomroot, -aet, -ppt, -tmn, -tmx, -k, -simpson, -redwoodPercent)
+
+##reformatting site pairs from most parsimonious models
+gdmDistroot <- formatsitepair(bioDroot, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", 
+                       YColumn = 
+                         "Latitude", 
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_rootc, 
+                       distPreds = NULL, weightType = "equal")
+
+gdmDistsoil <- formatsitepair(bioDsoil, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", YColumn = 
+                         "Latitude",
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_soilc, 
+                       distPreds = NULL, weightType = "equal")
+
+
+##Soil saprobes
+gdmDistsoilsaps <- formatsitepair(bioDsoilsaps, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", 
+                       YColumn = 
+                         "Latitude", 
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_soilSapc, 
+                       distPreds = NULL, weightType = "equal")
+
+##Soil symbiotrophs
+gdmDistsoilsymbio <- formatsitepair(bioDsoilsymbio, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", 
+                       YColumn = 
+                         "Latitude", 
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_soilSymbioc, 
+                       distPreds = NULL, weightType = "equal")
+##Soil pathogens
+gdmDistsoilpatho <- formatsitepair(bioDsoilpatho, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", 
+                       YColumn = 
+                         "Latitude", 
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_soilPathoc, 
+                       distPreds = NULL, weightType = "equal")
+
+
+##Gloms
+gdmDistGLOMSroots <- formatsitepair(bioDglomroots, bioFormat = 1, 
+                       dist = "bray", abundance = FALSE, 
+                       siteColumn = "SampleUnique", 
+                       XColumn = "Longitude", YColumn = 
+                         "Latitude",
+                       sppColumn = NULL, 
+                       abundColumn = NULL, sppFilter = 0, 
+                       predData = predD_glomrootc, 
+                       distPreds = NULL, weightType = "equal")
+```
+Final models (after backwards model selection)
+```{r}
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
+##formatting site-pairs after model selection
+
+##run model
+gdm.modelroot <- gdm(gdmDistroot, geo = TRUE, splines = NULL)
+gdm.modelsoil <- gdm(gdmDistsoil, geo = TRUE, splines = NULL)
+save(gdm.modelroot, file = "gdm.modelroot.rda")
+load(file = "gdm.modelroot.rda")
+save(gdm.modelsoil, file = "gdm.modelsoil.rda")
+load(file = "gdm.modelsoil.rda")
+
+##Different guilds
+gdm.modelsoilsaps <- gdm(gdmDistsoilsaps, geo = TRUE, splines = NULL)
+gdm.modelsoilsymbios <- gdm(gdmDistsoilsymbio, geo = FALSE, splines = NULL)
+gdm.modelsoilpathos <- gdm(gdmDistsoilpatho, geo = FALSE, splines = NULL)
+gdm.modelrootGLOMS <- gdm(gdmDistGLOMSroots, geo = TRUE, splines = NULL)
+save(gdm.modelsoilsaps, file = "gdm.modelsoilsaps.rda")
+load(file = "gdm.modelsoilsaps.rda")
+save(gdm.modelsoilsymbios, file = "gdm.modelsoilsymbios.rda")
+load(file = "gdm.modelsoilsymbios.rda")
+save(gdm.modelsoilpathos, file = "gdm.modelsoilpathos.rda")
+load(file = "gdm.modelsoilpathos.rda")
+save(gdm.modelrootGLOMS, file = "gdm.modelrootGLOMS.rda")
+load(file = "gdm.modelrootGLOMS.rda")
+
+
+
+
+##plots 
+plot(gdm.modelroot, plot.layout = c(2, 2), plot.color = "blue", plot.linewidth = 2.0)
+plot(gdm.modelsoil, plot.layout = c(2, 2), plot.color = "blue", plot.linewidth = 2.0)
+
+#guilds
+plot(gdm.modelsoilsaps, plot.layout = c(2, 2), plot.color = "blue", plot.linewidth = 2.0)
+plot(gdm.modelsoilsymbios, plot.layout = c(2, 2), plot.color = "blue", plot.linewidth = 2.0)
+plot(gdm.modelsoilpathos, plot.layout = c(2, 2), plot.color = "blue", plot.linewidth = 2.0)
+plot(gdm.modelrootGLOMS, plot.layout = c(2, 2), plot.color = "blue", plot.linewidth = 2.0)
+
+
+summary.gdm(gdm.modelroot)
+summary.gdm(gdm.modelsoil)
+
+# Sum coefficients for each predictor
+coefSumsRoot <- c()
+for (i in 1:length(gdm.modelroot$predictors)){
+  j <- (i * 3) - 2
+  coefSumsRoot[i] <- sum(gdm.modelroot$coefficients[j:(j+2)])
+}
+
+coefSumsSoil <- c()
+for (i in 1:length(gdm.modelsoil$predictors)){
+  j <- (i * 3) - 2
+  coefSumsSoil[i] <- sum(gdm.modelsoil$coefficients[j:(j+2)])
+}
+# Add those values to a simple data frame
+coeffsRootsFungi <- data.frame(predictor = gdm.modelroot$predictors, coefficient = coefSumsRoot)
+coeffsRootsFungi
+
+coeffsSoilsFungi <- data.frame(predictor = gdm.modelsoil$predictors, coefficient = coefSumsSoil)
+coeffsSoilsFungi
+```
+GDM Plots 
+```{r message=FALSE, warning=FALSE}
+
+rootsplines<-isplineExtract(gdm.modelroot)
+rootsplines<-as.data.frame(rootsplines)
+rootsplines$Type="All Fungi (Roots)"
+
+soilsplines<-isplineExtract(gdm.modelsoil)
+soilsplines<-as.data.frame(soilsplines)
+soilsplines$Type="All Fungi (Soil)"
+
+##guilds
+sapsoilsplines<-isplineExtract(gdm.modelsoilsaps)
+sapsoilsplines<-as.data.frame(sapsoilsplines)
+sapsoilsplines$Type="Saprotrophs"
+
+symbiosoilsplines<-isplineExtract(gdm.modelsoilsymbios)
+symbiosoilsplines<-as.data.frame(symbiosoilsplines)
+symbiosoilsplines$Type="Symbiotrophs (Soil)"
+
+pathosoilsplines<-isplineExtract(gdm.modelsoilpathos)
+pathosoilsplines<-as.data.frame(pathosoilsplines)
+pathosoilsplines$Type="Pathogens"
+
+glomrootsplines<-isplineExtract(gdm.modelrootGLOMS)
+glomrootsplines<-as.data.frame(glomrootsplines)
+glomrootsplines$Type="AMF (Roots)"
+
+rootplotsplines<-full_join(rootsplines, glomrootsplines)
+soilplotsplines<-(soilsplines)
+
+##back transforming for secondary axis  
+##scale take your z-score; multiple by standard deviation and +mean 
+##hand modify these axes for 0, 1, -1 etc, place these label 
+
+##the x for geographic is in lat-long and i need to convert to UTM and can divide by 1000 to get km (they are in m) http://rstudio-pubs-static.s3.amazonaws.com/19879_7e13ab80d5ed416c8e235bd6bb93cf3e.html
+meangdroot<-mean(rootplotsplines$x.Geographic)
+sdgdroot<-sd(rootplotsplines$x.Geographic)
+meanpH<-mean(rootplotsplines$x.pH)
+sdpH<-sd(rootplotsplines$x.pH)
+
+meangdsoil<-mean(soilsplines$x.Geographic)
+sdgdsoil<-sd(soilsplines$x.Geographic)
+meanred<-mean(soilsplines$x.redwoodPercent)
+sdred<-sd(soilsplines$x.redwoodPercent)
+
+GDMsoil<-ggplot(data = soilplotsplines)+
+  geom_line(aes(x=scale(x.Geographic), y=y.Geographic, color="Geographic distance"), size=1)+
+  geom_line(aes(x=scale(x.redwoodPercent), y=y.redwoodPercent, color="Redwood percent"), size=1)+
+  facet_wrap(~Type, ncol=1, scales = "free_y",
+             strip.position = "right")+
+  scale_color_manual(values=c("#1b3752", "#800000"), labels=c("Geographic distance", "Redwood percent"))+
+  scale_y_continuous("Partial ecological distance")+
+  scale_x_continuous("Geographic distance (scaled)", 
+                     breaks = seq(-1,1, by=0.5), 
+sec.axis=sec_axis(~((.*sdred)+meanred)*100, name="Percent redwood cover (%)"))+
+  theme( text = element_text(family = "Helvetica"),
+         plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+ size = rel(1),
+hjust = 0.5),
+panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+          legend.key = element_rect(fill="transparent", colour = NA),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =9),
+        legend.spacing = unit(0, "mm"),
+        legend.title = element_blank(),
+        legend.position = c(0.29,0.95),
+        legend.background = element_rect(fill = "transparent",
+colour = NA),strip.text = element_text(face="bold"))
+
+
+
+GDMsoilsymbios<-ggplot(data = symbiosoilsplines)+
+  geom_line(aes(x=scale(x.EDG), y=y.EDG, color="EDG"), size=1)+
+  geom_line(aes(x=scale(x.redwoodPercent), y=y.redwoodPercent, color="Redwood percent"), size=1)+
+  facet_wrap(~Type, ncol=1, scales = "free_y",
+             strip.position = "right")+
+  scale_color_manual(values=c("#1b3752", "#800000"), labels=c("EDG", "Redwood percent"))+
+  scale_y_continuous("Partial ecological distance")+
+  scale_x_continuous("Edge Density (EDG)", breaks = c(-1,0,1),
+                     #0 =mean EDG; mean(dfroot$EDG)=185.3344
+                     #1=mean+sd(=40.77364)>>185.3344+40.77364=226.108
+                     #-1=mean-sd(=504.5895)>>185.3344-40.77364=144.5608
+                     labels=c("145", "185", "226"), 
+sec.axis=sec_axis(~((.*sdred)+meanred)*100, name="Percent redwood cover (%)"))+
+  theme( text = element_text(family = "Helvetica"),
+         plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+ size = rel(1),
+hjust = 0.5),
+panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+          legend.key = element_rect(fill="transparent", colour = NA),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =9),
+        legend.spacing = unit(0, "mm"),
+        legend.title = element_blank(),
+        legend.position = c(0.29,0.95),
+        legend.background = element_rect(fill = "transparent",
+colour = NA),strip.text = element_text(face="bold"))
+
+
+
+GDMroot<-ggplot(data = rootplotsplines)+
+  geom_line(aes(x=scale(x.Geographic), y=y.Geographic, color="Geographic distance"), size=1)+
+  geom_line(aes(x=scale(x.pH), y=y.pH, color="Soil pH"), size=1)+
+  facet_wrap(~Type, ncol=1, scales = "free_y",
+             strip.position = "right")+
+  scale_y_continuous("Partial ecological distance")+
+  scale_x_continuous("Geographic distance (scaled)", sec.axis=sec_axis(~(.*sdpH)+meanpH, name="Soil pH"))+
+  scale_color_manual(values=c("#1b3752", "#ffab40"), labels=c("Geographic distance", "Soil pH"))+
+  theme( text = element_text(family = "Helvetica"),
+         plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+ size = rel(1),
+hjust = 0.5),
+panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+          legend.key = element_rect(fill="transparent", colour = NA),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =9),
+        legend.spacing = unit(0, "mm"),
+        legend.title = element_blank(),
+        legend.position = c(0.29,0.95),
+        legend.background = element_rect(fill = "transparent",
+colour = NA),strip.text = element_text(face="bold"))
+
+
+meangdsaps<-mean(sapsoilsplines$x.Geographic)
+sdgdsoilsaps<-sd(sapsoilsplines$x.Geographic)
+meanEDGsaps<-mean(sapsoilsplines$x.EDG)
+sdEDGsaps<-sd(sapsoilsplines$x.EDG)
+
+GDMsoilsaps<-ggplot(data = sapsoilsplines)+
+  geom_line(aes(x=scale(x.Geographic), y=y.Geographic, color="Geographic distance"), size=1)+
+  geom_line(aes(x=scale(x.EDG), y=y.EDG, color="EDG"), size=1)+
+  facet_wrap(~Type, ncol=1, scales = "free_y",
+             strip.position = "right")+
+  scale_color_manual(values=c("#1b3752", "#800000"), labels=c("Geographic distance", "EDG"))+
+  scale_y_continuous("Partial ecological distance")+
+  scale_x_continuous("Geographic distance (scaled)", 
+                     breaks = seq(-1,1, by=0.5), 
+sec.axis=sec_axis(~((.*sdEDGsaps)+meanEDGsaps), name="Edge density (EDG)"))+
+  theme( text = element_text(family = "Helvetica"),
+         plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+ size = rel(1),
+hjust = 0.5),
+panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+          legend.key = element_rect(fill="transparent", colour = NA),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =9),
+        legend.spacing = unit(0, "mm"),
+        legend.title = element_blank(),
+        legend.position = c(0.22,0.9),
+        legend.background = element_rect(fill = "transparent",
+colour = NA),strip.text = element_text(face="bold"))
+
+
+meanEDGpaths<-mean(pathosoilsplines$x.EDG)
+sdEDGpaths<-sd(pathosoilsplines$x.EDG)
+meanpptpaths<-mean(pathosoilsplines$x.ppt)
+sdpptpaths<-sd(pathosoilsplines$x.ppt)
+
+GDMsoilpaths<-ggplot(data=pathosoilsplines)+
+  geom_line(aes(x=scale(x.ppt),y=y.ppt, color="Precipitation"), size=1)+
+  geom_line(aes(x=scale(x.EDG),y=y.EDG, color="EDG"), size=1)+
+  scale_color_manual(values=c("#DF6813", "#048481"), labels=c("Preciptiation", "EDG"))+
+  facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
+  scale_y_continuous("Partial ecological distance")+
+  scale_x_continuous("Precipitation (mm/yr)", breaks = c(-1,0,1),
+                     #0 =mean ppt; mean(dfroot$ppt)=1404.529
+                     #1=mean+sd(=504.5895)>>1404.529-504.5895=1909.119
+                     #-1=mean-sd(=504.5895)>>1404.529-504.5895=899.9395
+                     labels=c("900", "1405", "1909"), 
+  sec.axis = sec_axis(~(.*sdEDGpaths)+meanEDGpaths, name="Edge density (EDG)"))+
+  theme( text = element_text(family = "Helvetica"),
+         plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+ size = rel(1),
+hjust = 0.5),
+panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+          legend.key = element_rect(fill="transparent", colour = NA),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =9),
+        legend.spacing = unit(0, "mm"),
+        legend.title = element_blank(),
+        legend.position = c(0.22,0.9),
+        legend.background = element_rect(fill = "transparent",
+colour = NA),strip.text = element_text(face="bold"))
+```
+
+Alpha diversity (roots); no significant relationships
+```{r}
+RichnessROOTS<-estimate_richness(Roots, split = TRUE, measures = NULL)
+RichnessROOTS$SampleUnique<-rownames(RichnessROOTS)
+SampleData<-as(sample_data(Roots), "data.frame")
+RichnessROOTS<-full_join(RichnessROOTS, SampleData)
+RichnessROOTS<-full_join(RichnessROOTS,dfroot)
+RichnessROOTS$Type="Root"
+
+library(lme4)
+library(lmerTest)
+library(sjPlot)
+library(car)
+
+#landscape het
+modelobservEDGroots<-lmer(formula = Observed~EDG+(1|SiteID/Treenum), data = RichnessROOTS, REML=F)
+modelobservredPerroots<-lmer(formula = Observed~redwoodPercent +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+modelobservLPIroots<-lmer(formula = Observed~LPI +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+
+
+AIC(modelobservEDGroots,modelobservredPerroots, modelobservLPIroots)
+BIC(modelobservEDGroots,modelobservredPerroots, modelobservLPIroots)
+
+##compare to climate and chem
+modelobservKroots<-lmer(formula = Observed~k +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+modelobservpHroots<-lmer(formula = Observed~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+
+AIC(modelobservLPIroots,modelobservKroots,modelobservpHroots)
+BIC(modelobservLPIroots,modelobservKroots,modelobservpHroots)
+
+##pH is best model for roots
+modelobservpHrootsa<-lmer(formula = Observed~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+
+modelobservpHrootsb<-lmer(formula = Observed~pH +(1|SiteID), data = RichnessROOTS, REML = F)
+
+anova(modelobservpHrootsa,modelobservpHrootsb)
+
+##modelobservpHrootsb is best
+modelobservpHrootsb<-lmer(formula = Observed~pH +(1|SiteID), data = RichnessROOTS, REML = T)
+
+#qqp(residuals(modelobservpHrootsb), col=2)
+summary(modelobservpHrootsb)
+
+##Shannon
+
+##How does landscape vs climate impact observed spp
+modelshannonEDGroots<-lmer(formula = Shannon~EDG+(1|SiteID/Treenum), data = RichnessROOTS, REML=F)
+modelshannonPerroots<-lmer(formula = Shannon~redwoodPercent +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+
+AIC(modelshannonEDGroots,modelshannonPerroots)
+BIC(modelshannonEDGroots,modelshannonPerroots)
+
+##compare to climate and chem
+modelshannonKroots<-lmer(formula = Shannon~k +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+modelshannonpHroots<-lmer(formula = Shannon~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+
+AIC(modelshannonPerroots, modelshannonKroots,modelshannonpHroots)
+BIC(modelshannonPerroots, modelshannonKroots,modelshannonpHroots)
+
+##pH is best model
+modelshannonpHrootsa<-lmer(formula = Shannon~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
+
+modelshannonpHrootsb<-lmer(formula = Shannon~pH +(1|SiteID), data = RichnessROOTS, REML = F)
+
+anova(modelshannonpHrootsa,modelshannonpHrootsb)
+
+##modela is best
+modelshannonpHrootsa<-lmer(formula = Shannon~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = T)
+
+#qqp(residuals(modelshannonpHrootsb), col=2)
+summary(modelshannonpHrootsa)
+
+library(sjPlot)
+Rootdiversitymodeltab<-tab_model(modelobservpHrootsa, modelshannonpHrootsb, auto.label = F)
+Rootdiversitymodeltab
+
+summary(aov(RichnessROOTS$Observed~RichnessROOTS$SiteID))
+summary(aov(RichnessROOTS$Shannon~RichnessROOTS$SiteID))
+
+RobservSite<-aov(RichnessROOTS$Observed~RichnessROOTS$SiteID)
+RshannonSite<-aov(RichnessROOTS$Shannon~RichnessROOTS$SiteID)
+
+TukeyHSD(RobservSite)
+TukeyHSD(RshannonSite)
+
+
+ObservedRoots<-ggplot(data=RichnessROOTS, aes(x=WEDG, y=Observed, color=SiteID))+
+geom_jitter(width = 0.1)+
+  labs(x="Weighted-edge density (WEDG)", y="Number of Species")+
+  facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
+  Publicationcolors()+
+  #geom_abline(aes(intercept=`(Intercept)`, slope=`scale(pH)`), data=as.data.frame(t(fixef(model3e))))+
+    theme( text = element_text(family = "Helvetica"),
+            plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+                                      size = rel(1),
+                                      hjust = 0.5),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_line(colour = "black"),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+          legend.position =  "none")
+ObservedRoots
+
+
+Shannonroots<-ggplot(data=RichnessROOTS, aes(x=pH, y=Shannon, color=SiteID))+
+  Publicationcolors()+
+  geom_point(aes())+
+  labs(x="pH", y="Shannon Diversity")+
+  facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
+  #geom_abline(aes(intercept=`(Intercept)`, slope=`scale(pH)`), data=as.data.frame(t(fixef(model3e.Shannon))), color="black", linetype = "dashed")+
+  theme(text = element_text(family = "Helvetica"),
+      plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+                                      size = rel(1),
+                                      hjust = 0.5),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_line(colour = "black"),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.key = element_rect(fill="transparent", 
+                                      colour = NA),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =10),
+        legend.spacing = unit(0, "mm"),
+        legend.background = element_rect(fill = "transparent",
+                                         colour = NA),
+        strip.text = element_text(face="bold"))
+
+Shannonroots
+```
+
+Richness in soils
+```{r}
+RichnessSoilS<-estimate_richness(Soils, split = TRUE, measures = NULL)
+RichnessSoilS$SampleUnique<-rownames(RichnessSoilS)
+SampleData<-as(sample_data(Soils), "data.frame")
+RichnessSoilS<-full_join(RichnessSoilS, SampleData)
+RichnessSoilS<-full_join(RichnessSoilS,dfsoil)
+RichnessSoilS$Type="Soil"
+
+library(lme4)
+library(lmerTest)
+##How does landscape vs climate impact observed spp
+modelobservEDG<-lmer(formula = Observed~EDG+(1|SiteID/Treenum), data = RichnessSoilS, REML=F)
+modelobservredPer<-lmer(formula = Observed~redwoodPercent +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+modelobservLPI<-lmer(formula = Observed~LPI +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+
+AIC(modelobservredPer, modelobservLPI,modelobservEDG)
+BIC(modelobservredPer, modelobservLPI,modelobservEDG)
+
+##compare to climate and chem
+modelobservK<-lmer(formula = Observed~k +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+modelobservpH<-lmer(formula = Observed~pH +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+
+AIC(modelobservEDG,modelobservK,modelobservpH)
+BIC(modelobservEDG,modelobservK,modelobservpH)
+
+##best model is WEDG;
+modelobservEDGa<-lmer(formula = Observed~EDG+(1|SiteID/Treenum), data = RichnessSoilS, REML=F)
+modelobservEDGb<-lmer(formula = Observed~EDG+(1|SiteID), data = RichnessSoilS, REML=F)
+
+anova(modelobservEDGa,modelobservEDGb)
+
+##best model for observed spp; patchier lanscapes have less species 
+modelobservEDGb<-lmer(formula = Observed~EDG+(1|SiteID), data = RichnessSoilS, REML=T)
+
+qqp(residuals(modelobservEDGb), col=2)
+summary(modelobservEDGb)
+
+tab_model(modelobservEDGb)
+
+##Shannon comparison
+##How does landscape vs climate impact observed spp
+modelshannonEDG<-lmer(formula = Shannon~EDG+(1|SiteID/Treenum), data = RichnessSoilS, REML=F)
+modelshannonPer<-lmer(formula = Shannon~redwoodPercent +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+
+AIC(modelshannonEDG,modelshannonPer)
+BIC(modelshannonEDG,modelshannonPer)
+
+##compare to climate and chem
+modelshannonK<-lmer(formula = Shannon~k +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+modelshannonpH<-lmer(formula = Shannon~pH +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+
+AIC(modelshannonEDG,modelshannonK,modelshannonpH)
+BIC(modelshannonEDG,modelshannonK,modelshannonpH)
+
+##EDG is clear winner
+modelshannonEDGa<-lmer(formula = Shannon~EDG+(1|SiteID/Treenum), data = RichnessSoilS, REML=F)
+modelshannonEDGb<-lmer(formula = Shannon~EDG+(1|SiteID), data = RichnessSoilS, REML=F)
+
+anova(modelshannonEDGa,modelshannonEDGb)
+
+#best model
+modelshannonEDGb<-lmer(formula = Shannon~EDG+(1|SiteID), data = RichnessSoilS, REML=T)
+
+qqp(residuals(modelshannonEDGb), col=2)
+summary(modelshannonEDGb)
+
+tab_model(modelshannonEDGb)
+
+library(sjPlot)
+Soildiversitymodeltab<-tab_model(modelobservEDGb,modelshannonEDGb, auto.label = F)
+Soildiversitymodeltab
+
+ShannonSoilsa<-ggplot(data=RichnessSoilS, aes(x=EDG, y=Shannon, color=SiteID))+
+  Publicationcolors()+
+  geom_jitter()+
+  labs(x="Edge density (EDG)", y="Shannon diversity index (H')")+
+    facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
+  geom_abline(aes(intercept=`(Intercept)`, slope=`EDG`), data=as.data.frame(t(fixef(modelshannonEDGb))), color="black")+
+    theme( text = element_text(family = "Helvetica"),
+            plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+                                      size = rel(1),
+                                      hjust = 0.5),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_line(colour = "black"),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+           legend.key = element_rect(fill="transparent", 
+                                      colour = NA),
+        legend.key.size= unit(4, "mm"),
+        legend.text = element_text(size =10),
+        legend.spacing = unit(0, "mm"),
+        legend.background = element_rect(fill = "transparent",
+                                         colour = NA),
+        strip.text = element_text(face="bold"))
+ShannonSoilsa
+
+Legend<-get_legend(ShannonSoilsa)
+
+
+ShannonSoils<-ggplot(data=RichnessSoilS, aes(x=EDG, y=Shannon, color=SiteID))+
+  Publicationcolors()+
+  geom_jitter(width = 0.1)+
+  labs(x="Edge density (EDG)", y="Shannon diversity index (H')")+
+    facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
+  geom_abline(aes(intercept=`(Intercept)`, slope=`EDG`), data=as.data.frame(t(fixef(modelshannonEDGb))), color="black")+
+    theme( text = element_text(family = "Helvetica"),
+            plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+                                      size = rel(1),
+                                      hjust = 0.5),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_line(colour = "black"),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.position = "none")
+
+##diversity declines as landscapes become more patchy
+
+```
+
+Rhizonode Richness (soil vs root vs rhizonode)
+```{r}
+RichnessRhizo<-estimate_richness(RAREstructure, split = TRUE, measures = NULL)
+RichnessRhizo$SampleUnique<-cbind(Strucdf$SampleUnique)
+SampleDataRhizo<-as(sample_data(RAREstructure), "data.frame")
+RichnessRhizo<-full_join(RichnessRhizo, SampleDataRhizo)
+
+
+ObservedRhizo<-ggplot(data=RichnessRhizo, aes(x=SampleType, y=Observed, fill=SampleType))+
+  geom_boxplot(aes())+
+  labs(x="Compartment", y="Number of Species")+
+scale_fill_manual(values = c("#2332A0", "#36B4FC", "#1BFFE8"))+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_rect(fill="transparent", colour = "black"),
+        axis.title.y = element_text(angle=90, size = 12, margin = margin(r=3, unit = "mm")),
+        axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+        axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+        axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+        axis.line = element_blank(),
+        axis.ticks.x = element_line(colour = "black"),
+        axis.ticks.y = element_line(colour = "black"),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+        strip.background=element_rect(fill="transparent", colour=NA),
+        strip.text = element_text(face="bold"))
+
+ShannonRhizo<-ggplot(data=RichnessRhizo, aes(x=SampleType, y=Shannon, fill=SampleType))+
+  geom_boxplot(aes())+
+    labs(x="Compartment", y="Shannon Diversity")+
+scale_fill_manual(values = c("#2332A0", "#36B4FC", "#1BFFE8"))+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_rect(fill="transparent", colour = "black"),
+        axis.title.y = element_text(angle=90, size = 12, margin = margin(r=3, unit = "mm")),
+        axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+        axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+        axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+        axis.line = element_blank(),
+        axis.ticks.x = element_line(colour = "black"),
+        axis.ticks.y = element_line(colour = "black"),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+        strip.background=element_rect(fill="transparent", colour=NA),
+        strip.text = element_text(face="bold"))
+
+RobsvSampleType<-aov(RichnessRhizo$Observed~RichnessRhizo$SampleType+RichnessRhizo$Treenum)
+summary(RobsvSampleType)
+TukeyHSD(RobsvSampleType)
+
+RshannonSampleType<-aov(RichnessRhizo$Shannon~RichnessRhizo$SampleType+
+                          RichnessRhizo$Treenum)
+summary(RshannonSampleType)
+TukeyHSD(RshannonSampleType)
+
+```
+
+Beta diversity(turnover and nestedness)
+```{r message=FALSE, warning=FALSE}
+library(betapart)
+      
+##calculate geographic distances (uses SoDA)
+gdroot<-dist(geoXY(dfroot$Latitude, dfroot$Longitude, unit=1000))
+gdsoil<-dist(geoXY(dfsoil$Latitude, dfsoil$Longitude, unit=1000))
+
+##environmental distances from gdm
+pHdistroot<-dist(dfroot$pH) 
+redcoverdistroot<-dist(dfroot$redwoodPercent)
+EDGdistroot<-dist(dfroot$EDG)
+redcoverdistsoil<-dist(dfsoil$redwoodPercent)
+EDGdistsoil<-dist(dfsoil$EDG)
+pHdistsoil<-dist(dfsoil$pH)
+
+##beta.pair (spatial turnover and nestedness)
+#fungiroots<-Rootdf; Rootdf[Rootdf>0]=1 
+#save(fungiroots, file = "fungiroots.rda")
+setwd("~/Dropbox/Research/Thesis_Ch1/Data/R/")
+load(file = "fungiroots.rda")
+fungi.dist.roots<-beta.pair(fungiroots, index.family = "jaccard")
+
+##gdroot is distance matrix of spatial distance
+##phdistroot is a distance matrix of difference in pH
+
+
+##turnover and nestedness across spatial distance and pH 
+mantel(fungi.dist.roots$beta.jne~pHdistroot)
+mantel(fungi.dist.roots$beta.jtu~pHdistroot)
+
+mantel(fungi.dist.roots$beta.jne~gdroot)
+mantel(fungi.dist.roots$beta.jtu~gdroot)
+
+
+##soils
+#fungisoils<-Soildf; Soildf[Soildf>0]=1 
+#save(fungisoils, file = "fungisoils.rda")
+load(file = "fungisoils.rda")
+fungi.dist.soils<-beta.pair(fungisoils, index.family = "jaccard")
+
+mantel(fungi.dist.soils$beta.jtu~redcoverdistsoil)
+mantel(fungi.dist.soils$beta.jne~redcoverdistsoil)
+
+mantel(fungi.dist.soils$beta.jne~gdsoil)
+mantel(fungi.dist.soils$beta.jtu~gdsoil)
+
+mantel(fungi.dist.soils$beta.jne~EDGdistsoil)
+mantel(fungi.dist.soils$beta.jtu~EDGdistsoil)
+```
+Beta-dispersion (homogeneity of variate dispersion across sites)
+```{r}
+SampleDataAll<-as(sample_data(RARE), "data.frame")
+SampleDataSoil<-as(sample_data(Soils), "data.frame")
+SampleDataRoots<-as(sample_data(Roots), "data.frame")
+
+SampleDataStructures<-as(sample_data(RAREstructure), "data.frame")
+
+##Roots versus soils
+z <- betadiver(FUNGIdf, "z")
+mod <- with(SampleDataAll, betadisper(z, SampleType))
+boxplot(mod)
+t.test(mod$distances~mod$group)
+
+##soils
+z <- betadiver(fungisoils, "z")
+mod <- with(SampleDataSoil, betadisper(z, SiteID))
+mod
+betadist <- data.frame(matrix(unlist(mod$distances), byrow=F))
+betasite<-data.frame(matrix(unlist(mod$group), byrow=F))
+betadispsoils<-cbind(betasite,betadist)
+
+##roots
+zr<-betadiver(fungiroots, "z")
+modr <- with(SampleDataRoots, betadisper(zr, SiteID))
+betadistr <- data.frame(matrix(unlist(modr$distances), byrow=F))
+betasiter<-data.frame(matrix(unlist(modr$group), byrow=F))
+betadisproots<-cbind(betasiter,betadistr)
+
+##join with sample data
+betadispsoils<-betadispsoils %>% 
+  dplyr::rename(
+        BetaDist=matrix.unlist.mod.distances...byrow...F.,
+        SiteID_delete=matrix.unlist.mod.group...byrow...F.)
+  betadispsoils<-cbind(betadispsoils, dfsoil)
+
+betadisproots<-betadisproots %>% 
+  dplyr::rename(
+        BetaDist=matrix.unlist.modr.distances...byrow...F.,
+        SiteID_delete=matrix.unlist.modr.group...byrow...F.)
+  betadisproots<-cbind(betadisproots, dfroot)
+
+##combine root and soil into one df
+betadispall<-full_join(betadisproots, betadispsoils)
+
+library(lme4)
+library(lmerTest)
+
+##modelselection
+
+betadispmodelLat<-lmer(formula = BetaDist~scale(Latitude)*SampleType +(1|Site), data = betadispall, REML = F)
+betadispmodelK<-lmer(formula = BetaDist~scale(k)*SampleType +(1|SiteID), data = betadispall, REML = F)
+betadispmodelaet<-lmer(formula = BetaDist~scale(aet)*SampleType +(1|SiteID), data = betadispall, REML = F)
+betadispmodelpH<-lmer(formula = BetaDist~scale(pH)*SampleType +(1|SiteID), data = betadispall, REML = F)
+
+
+AIC(betadispmodelaet, betadispmodelLat, betadispmodelpH, betadispmodelK)
+BIC(betadispmodelaet, betadispmodelLat, betadispmodelpH, betadispmodelK)
+
+betadispmodelKfull<-lmer(formula = BetaDist~k*SampleType +(1|SiteID), data = betadispall, REML = F)
+betadispmodelKmin1<-lmer(formula = BetaDist~k+SampleType +(1|SiteID), data = betadispall, REML = F)
+betadispmodelKmin2<-lmer(formula = BetaDist~k +(1|SiteID), data = betadispall, REML = F)
+
+anova(betadispmodelKfull, betadispmodelKmin1, betadispmodelKmin2)
+
+##no random effect
+betadispmodelKmin2<-lmer(formula = BetaDist~(k) +(1|SiteID), data = betadispall, REML = T)
+
+library(dplyr)
+betadispallgroup<-(betadispall) %>% 
+  group_by(SiteID, SampleType)%>% 
+   dplyr::summarise(MeanDisp=mean(na.exclude(BetaDist)),
+            SD=sd(na.exclude(BetaDist)),
+            SiteID=SiteID, 
+            Latitude=Latitude,
+            k=k) 
+
+
+library(sjPlot)
+tab_model(betadispmodelKmin2)
+betadispsoil<-filter(betadispallgroup, SampleType=="Soil")
+betadisplotsoil<-ggplot(betadispsoil, aes(x=k, y = MeanDisp, color=SiteID)) +
+  facet_wrap(~SampleType,scales="free_x", ncol = 1, strip.position = "right")+
+  Publicationcolors()+
+  geom_pointrange(aes(
+      ymin = betadispsoil$MeanDisp-betadispsoil$SD, 
+      ymax = betadispsoil$MeanDisp+betadispsoil$SD))+
+  geom_abline(aes(intercept=`(Intercept)`, slope=`k`), data=as.data.frame(t(fixef(betadispmodelKmin2))), color="black")+
+  labs(x="Climatic controls on decomp (k)", y="Dispersion")+
+  theme(
+            text = element_text(family = "Helvetica"),
+            plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+                                      size = rel(1),
+                                      hjust = 0.5),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_line(colour = "black"),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.text = element_text(size=12),
+            legend.title = element_text(size =12,face = "bold" ),
+            legend.position = "none")
+
+
+betadisproot<-filter(betadispallgroup, SampleType=="Root")
+betadisplotroot<-ggplot(betadisproot, aes(x=k, y = MeanDisp, color=SiteID)) +
+  facet_wrap(~SampleType,scales="free_x", ncol = 1, strip.position = "right")+
+  Publicationcolors()+
+  geom_pointrange(aes(
+      ymin = betadisproot$MeanDisp-betadisproot$SD, 
+      ymax = betadisproot$MeanDisp+betadisproot$SD))+
+  geom_abline(aes(intercept=`(Intercept)`, slope=`k`), data=as.data.frame(t(fixef(betadispmodelKmin2))), color="black")+
+  labs(x="Climatic controls on decomp (k)", y="Dispersion")+
+  theme(
+            text = element_text(family = "Helvetica"),
+            plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
+                                      size = rel(1),
+                                      hjust = 0.5),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title = element_text(size = rel(1)),
+            axis.title.y = element_text(angle=90, size = rel(1), margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=rel(1), margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_line(colour = "black"),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.text = element_text(size=12),
+            legend.title = element_text(size =12,face = "bold" ),
+            legend.position = "none")
+
+
+
+
+structurestotal<-Structuresdf; Structuresdf[Structuresdf>0]=1 # fung is the OTU table ##
+
+zstructures<-betadiver(structurestotal, "z")
+modstruc <- with(SampleDataStructures, betadisper(zstructures, SampleType))
+
+
+betadiststruc <- data.frame(matrix(unlist(modstruc$distances), byrow=F))
+betagroupstruc<-data.frame(matrix(unlist(modstruc$group), byrow=F))
+betadispstruc<-cbind(betadiststruc,betagroupstruc)
+
+##join with sample data
+betadispstruc<-betadispstruc %>% 
+  dplyr::rename(
+        BetaDist=matrix.unlist.modstruc.distances...byrow...F.,
+        SampID_delete=matrix.unlist.modstruc.group...byrow...F.)
+  betadispstruc<-cbind(betadispstruc, SampleDataStructures)
+
+Strucdisp<-aov(BetaDist~SampleType, betadispstruc)
+summary(Strucdisp)
+TukeyHSD(Strucdisp)
+
+
+betahomogenstruc<-ggplot(data=betadispstruc, aes(SampleType, BetaDist, fill=SampleType)) +geom_boxplot()+
+  labs(x="Compartment", y="Dispersion")+
+  scale_fill_manual(values = c("#2332A0", "#36B4FC", "#1BFFE8"))+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_rect(fill="transparent", colour = "black"),
+        axis.title.y = element_text(angle=90, size = 12, margin = margin(r=3, unit = "mm")),
+        axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+        axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+        axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+        axis.line = element_blank(),
+        axis.ticks.x = element_line(colour = "black"),
+        axis.ticks.y = element_line(colour = "black"),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+        strip.background=element_rect(fill="transparent", colour=NA),
+        strip.text = element_text(face="bold"))
+
+```
+Rhizonodes
+```{r}
+Top500structures = names(sort(taxa_sums(RAREstructure), TRUE)[1:500])
+Top500structures <- prune_taxa(Top500structures, Structures)
+
+mergingStructures = merge_samples(Top500structures, "SampleType")
+mergingStructuresT = transform_sample_counts(mergingStructures, function(x) 100 * x/sum(x*100))
+
+##pulling out rhizonode taxon data
+structurestable<-(as(otu_table(mergingStructuresT), "matrix"))
+structurestable<-as.data.frame(t(structurestable))
+StrTaxStructures<-as.data.frame(as(tax_table(mergingStructuresT), "matrix"))
+StrTaxStructures$OTU<-rownames(StrTaxStructures) 
+
+library(tibble)
+perchangeamfdf<-structurestable %>%
+  rownames_to_column("OTU") %>%
+  dplyr::full_join(StrTaxStructures)
+
+
+changedf<-group_by(perchangeamfdf, Phylum)%>%
+  summarise_at(vars(Root, Rhizonode, Soil), sum, na.rm=T) 
+
+logplotRootRhizo<-ggplot(data=changedf)+
+  geom_abline(intercept=0, slope=1) +
+  annotate("text", x=-6.7, y=-6.9, label="1:1", angle=45 )+
+  annotate("segment", x = -4.3, xend = -5.2, y = -4.3, yend = -3.2, colour = "gray", size=3, alpha=0.6, arrow=arrow())+
+  geom_point(aes(x=log(Root), y=log(Rhizonode), color=Phylum), size=3)+ 
+  scale_color_manual(values = Rhizonodebarcolors, na.value="#E8E8E8", labels=c("Ascomycota", "Basidiomycota", "Chytridiomycota", "Glomeromycota", "Monoblepharidomycota","Mortierellomycota","Mucoromycota", "Rozellomycota", "Unassigned"), name="Fungal Phylum")+ 
+            scale_y_continuous("log(Relative Abundance Rhizonode)")+
+            xlab("log(Relative Abundance Root)")+
+            theme(
+            text = element_text(family = "Helvetica"),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            strip.background.x=element_rect(fill="LightGray",colour = NA),
+            strip.background.y=element_rect(fill="LightGray",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.text.x = element_text(angle=0, size=14, 
+                         margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=12, 
+                        margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_blank(),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.key = element_rect(fill="transparent", colour = NA),
+            legend.box = "horizontal",
+            legend.key.size= unit(4, "mm"),
+            legend.text = element_text(size =11),
+            legend.spacing = unit(0, "mm"),
+            legend.background = element_rect(fill = "transparent", colour = NA),
+            plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+            strip.background=element_rect(fill="transparent", colour=NA),
+            strip.text = element_text(face="bold"))
+
+
+
+logplotSoilRhizo<-ggplot(data=changedf)+
+  geom_abline(intercept=0, slope=1) +
+  geom_point(aes(x=log(Soil), y=log(Rhizonode), color=Phylum), size=2)+ 
+  scale_color_manual(values = Rhizonodebarcolors, na.value="#E8E8E8", labels=c("Ascomycota", "Basidiomycota", "Chytridiomycota", "Glomeromycota", "Monoblepharidomycota","Mortierellomycota","Mucoromycota", "Rozellomycota", "Unassigned"), name="Fungal Phylum")+ 
+            scale_y_continuous("log(Relative Abundance Rhizonode)")+
+            xlab("log(Relative Abundance Soil)")+
+            theme(
+            text = element_text(family = "Helvetica"),
+            panel.background = element_rect(fill="transparent", colour = NA),
+            plot.background = element_rect(fill="transparent",colour = NA),
+            strip.background.x=element_rect(fill="LightGray",colour = NA),
+            strip.background.y=element_rect(fill="LightGray",colour = NA),
+            panel.border = element_rect(fill="transparent", colour = "black"),
+            axis.title.y = element_text(angle=90, size = 14, margin = margin(r=3, unit = "mm")),
+            axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+            axis.text.x = element_text(angle=0, size=14, 
+                                       margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+            axis.text.y = element_text(size=14, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+            axis.line = element_blank(),
+            axis.ticks.x = element_blank(),
+            axis.ticks.y = element_line(colour = "black"),
+            axis.ticks.length=unit(-1.4, "mm"), 
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            legend.key = element_rect(fill="transparent", colour = NA),
+            legend.box = "horizontal",
+            legend.key.size= unit(4, "mm"),
+            legend.text = element_text(size =11),
+            legend.spacing = unit(0, "mm"),
+            legend.background = element_rect(fill = "transparent", colour = NA),
+            plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+            strip.background=element_rect(fill="transparent", colour=NA),
+            strip.text = element_text(face="bold"))
+
+
+allstruc= transform_sample_counts(Top500structures, function(x) 100 * x/sum(x*100))
+
+structurestable2<-(as(otu_table(allstruc), "matrix"))
+structurestable2<-as.data.frame((structurestable2))
+StrTaxStructures2<-as.data.frame(as(tax_table(allstruc), "matrix"))
+StrTaxStructures2$OTU<-rownames(StrTaxStructures2) 
+SampleData<-as(sample_data(allstruc), "data.frame")
+
+
+AMFstructuresdf2<-structurestable2 %>%
+  rownames_to_column("OTU") %>%
+  dplyr::full_join(StrTaxStructures2)
+
+AMFstructuresdf2<-full_join(AMFstructuresdf2, StrTaxStructures)
+AMFstructuresdf2<-filter(AMFstructuresdf2, Phylum=="Glomeromycota")
+
+AMFsums<-colSums(AMFstructuresdf2[,2:72])
+AMFstructuresdfsums=as.data.frame(AMFsums)
+AMFstructuresdfsums=cbind(AMFstructuresdfsums,SampleData) 
+
+as.character(AMFstructuresdfsums$SampleType)
+as.numeric(AMFstructuresdfsums$AMFsums)
+
+RhizoAMFtest<-aov(AMFstructuresdfsums$AMFsums~AMFstructuresdfsums$SampleType)
+summary(RhizoAMFtest)
+TukeyHSD(RhizoAMFtest)
+
+RhizoAMFtest<-aov(AMFstructuresdfsums$AMFsums~AMFstructuresdfsums$SampleType)
+summary(RhizoAMFtest)
+TukeyHSD(RhizoAMFtest)
+
+
+meanAMFroots<-mean(AMFstructuresdfsums$AMFsums[AMFstructuresdfsums$SampleType=="Root"])
+
+meanAMFrhizonodes<-mean(AMFstructuresdfsums$AMFsums[AMFstructuresdfsums$SampleType=="Rhizonode"])
+
+meanAMFrhizonodes/meanAMFroots
+
+AMFsumsplot=ggplot(data=AMFstructuresdfsums, aes(x=SampleType, y=AMFsums),fill=SampleType)+
+  geom_boxplot(aes(fill=SampleType))+
+          labs(x="Compartment",
+                  y="Relative Abundance of AMF")+
+scale_fill_manual(values = c("#2332A0", "#36B4FC", "#1BFFE8"))+
+  theme(
+        text = element_text(),
+        panel.background = element_rect(fill="transparent", colour = NA),
+        plot.background = element_rect(fill="transparent",colour = NA),
+        panel.border = element_rect(fill="transparent", colour = "black"),
+        axis.title.y = element_text(angle=90, size = 12, margin = margin(r=3, unit = "mm")),
+        axis.title.x = element_text(size=12, margin = margin(t=3, unit = "mm")),
+        axis.text.x = element_text(size=12, margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+        axis.text.y = element_text(size=12, margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+        axis.line = element_blank(),
+        axis.ticks.x = element_line(colour = "black"),
+        axis.ticks.y = element_line(colour = "black"),
+        axis.ticks.length=unit(-1.4, "mm"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        plot.margin=margin(t=2, r=2, b=2, l=2, unit = "mm"),
+        strip.background=element_rect(fill="transparent", colour=NA),
+        strip.text = element_text(face="bold"))
+
+```
+Indicator spp analysis
+```{r eval=FALSE, include=FALSE}
+
+#Lets start trying to do indicator species. First extract the OTU table from rarefied NoSingletons
+
+indval_noS<-otu_table(rareNoSingletons)
+
+#transpose it
+indval_noS = t(indval_noS)
+
+#Then make a dataframe from the mapping file that has 1 for root and 2 for structure and 3 for soil
+
+indval_data<-sample_data(rareNoSingletons)
+indval_data$SampleType <- gsub('Nodule', '1', indval_data$SampleType)
+indval_data$SampleType <- gsub('Root', '2', indval_data$SampleType)
+indval_data$SampleType <- gsub('Soil', '3', indval_data$SampleType)
+indval_data$SampleType<-as.factor(as.character(indval_data$SampleType))
+
+#Use this to do indval
+#install.packages("labdsv")
+library(labdsv)
+
+iva<-indval(indval_noS,indval_data$SampleType)
+gr<-iva$maxcls[iva$pval<=0.05]
+iv<-iva$indcls[iva$pval<=0.05]
+pv<-iva$pval[iva$pval<=0.05]
+fr<-apply(indval_noS > 0,2,sum)[iva$pval<=0.05]
+fidg<-data.frame(group=gr, indval=iv, pvalue=pv, freq=fr)
+fidg<-fidg[order(fidg$group, -fidg$indval),]
+fidg
+
+indval_tax<-tax_table(rareNoSingletons)
+indval_output<-indval_tax[c(rownames(fidg)),]
+indval_output<-cbind(fidg, indval_output)
+
+write.csv(indval_output, file = "~/Downloads/RedwoodProject/Phyloseq/Roots_v_Structures/Fungi/Big/amptk_indicators.csv")
+
+```
+Figure formatting
+```{r}
+library(cowplot)
+
+Figure1<-cowplot::plot_grid(plotmap)
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure1.pdf", plot = Figure1, width=3.8, height = 4.5)                
+  
+Figure2A<-cowplot::plot_grid(GDMsoil,GDMsoilsymbios,
+                  labels = c("a)", ""), 
+                  label_size = 14,
+                  label_fontfamily = "sans",
+                  ncol = 1)
+
+Figure2BC<-cowplot::plot_grid(ShannonSoils,betadisplotsoil,
+                  labels = c("b)", "c)"), 
+                  ncol=1,
+                  label_size = 14,
+                  label_fontfamily = "sans")
+Figure2BCl<-cowplot::plot_grid(Figure2BC,Legend,
+                  rel_widths  = c(2,0.5),
+                  ncol=2,
+                  label_size = 14,
+                  label_fontfamily = "sans")
+
+Figure2ABCl<-cowplot::plot_grid(Figure2A, Figure2BCl,
+                            rel_widths  = c(2,2),
+                            ncol=2,
+                            label_size = 12, 
+                            label_fontfamily = "sans")
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure2ABC.pdf", plot = Figure2ABCl, width=10.2, height = 5.8)
+
+Figure3A<-cowplot::plot_grid(GDMroot,
+                  labels = c("a)"), 
+                  label_size = 14,
+                  label_fontfamily = "sans",
+                  ncol = 1)
+Figure3BC<-cowplot::plot_grid(ObservedRoots,betadisplotroot,
+                  labels = c("b)", "c)"), 
+                  ncol=1,
+                  label_size = 14,
+                  label_fontfamily = "sans")
+Figure3BCl<-cowplot::plot_grid(Figure3BC,Legend,
+                  rel_widths  = c(2,0.5),
+                  ncol=2,
+                  label_size = 14,
+                  label_fontfamily = "sans")
+
+Figure3ABC<-cowplot::plot_grid(Figure3A,Figure3BCl,
+                            rel_widths  = c(2,2),
+                            ncol=2,
+                            label_size = 12, 
+                            label_fontfamily = "sans")
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure3ABC.pdf", plot = Figure3ABC, width=10.2, height = 5.8)
+
+##Figure 4; morphological characterization of rhizonodes
+
+
+Figure5A<-cowplot::plot_grid(StructuresORD,
+                            rel_heights = c(0.1, 1.85),
+                            labels = c("a)"),
+                            label_fontfamily = "sans")
+
+Figure5B<-cowplot::plot_grid(Rhizobarplot,
+                            ncol=1,
+                            labels = c("b)"),
+                            label_fontfamily = "sans")
+
+Figure5AB<-cowplot::plot_grid(Figure5A,Figure5B,
+                            rel_widths = c(3,3.2),
+                            nrow=1)
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure5AB.pdf", plot = Figure5AB, width=8, height = 4)
+
+
+Figure6AB<-cowplot::plot_grid(AMFsumsplot,ObservedRhizo,
+                            labels = c("a)", "b)"),
+                            ncol = 1,
+                            label_fontfamily = "sans")
+
+Figure6C<-cowplot::plot_grid(logplotRootRhizo,
+                            labels = c("c)"),
+                            ncol = 1,
+                            label_fontfamily = "sans")
+Figure6ABC<-cowplot::plot_grid(Figure6AB,Figure6C,
+                               rel_widths  = c(2,6))
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("Figure6ABC.pdf", plot = Figure6ABC, width=11.5, height = 6.5)
+
+
+  
+##Supplemental Figures
+FigS1<-cowplot::plot_grid(GDMsoilsaps, GDMsoilpaths,
+                  labels = c("a)", "b)"), 
+                  label_size = 14,
+                  label_fontfamily = "sans",
+                  ncol = 1)
+
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("FigS1.pdf", plot = FigS1, width=4.5, height = 5.8)
+
+FigureS2A<-cowplot::plot_grid(ORD,
+                            rel_heights = c(0.1, 1.85),
+                            labels = c("a)"),
+                            label_fontfamily = "sans")
+
+FigureS2B<-cowplot::plot_grid(barplot,
+                            ncol=1,
+                            labels = c("b)"),
+                            label_fontfamily = "sans")
+
+FigureS2AB<-cowplot::plot_grid(FigureS2A,FigureS2B,
+                            rel_widths = c(3.9,2.8),
+                            nrow=1)
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("FigureS2AB.pdf", plot = FigureS2AB, width=10.2, height = 5)
+
+
+
+
+FigS3<-cowplot::plot_grid(Ectorootbarplot,
+                  ncol = 1)
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("FigS3.pdf", plot = FigS3, width=4.5, height = 5.8)
+
+
+FigS4<-cowplot::plot_grid(Glombarplot,
+                  ncol = 1)
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+ggsave("FigS4.pdf", plot = FigS4, width=4.5, height = 5.8)
+
+
+```
+
+
