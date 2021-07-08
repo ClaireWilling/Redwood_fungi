@@ -2948,8 +2948,6 @@ FigS4<-cowplot::plot_grid(Glombarplot,
                   ncol = 1)
 setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("FigS4.pdf", plot = FigS4, width=4.5, height = 5.8)
-
-
 ```
 
 
