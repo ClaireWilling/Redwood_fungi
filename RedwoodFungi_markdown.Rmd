@@ -21,7 +21,7 @@ amptk lulu -i Structures2.final.txt -f Structures2.filtered.otus.fa -o Structure
 ##Assign taxonomy (used ITS database)
 amptk taxonomy -f Redwoodfunginew.cluster.otus.fa -i Redwoodfunginew.otu_table.txt -m Redwoodfunginew.mapping_file.txt -d ITS -o Redwoodfunginew
 
-```{r include=FALSE} 
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 library(phyloseq)
 library(vegan)
 library(devtools)
@@ -47,7 +47,7 @@ Publicationcolors <- function(...){
 
 ```
 Plots and landscape metrics
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(readr)
 library(ggplot2)
 library(tidyverse)
@@ -244,7 +244,7 @@ for (i in 1:length(lc_by_plotbuffer)){
 
 ```
 
-```{r landscape and vegetation data}
+```{r landscape and vegetation data, message=FALSE, warning=FALSE}
 
 # landscape and vegetation data
 # resolution = 30x30 = 30m2; therefore, to calculate m2: count x 30m x 30m 
@@ -389,7 +389,7 @@ Structures<-subset_samples(Structures, SiteID=="8")
 
 ```
 Rarefaction curves
-```{r}
+```{r message=FALSE, warning=FALSE}
 MIDtable<-otu_table(MID)
 Structuretable<-otu_table(Structures)
 
@@ -433,7 +433,7 @@ GlomsoilNR<-subset_samples(GlomNR, SampleType=="Soil")
 ```
 
 Adonis test; vegan
-```{r}
+```{r message=FALSE, warning=FALSE}
 
 RootsRARE<-subset_samples(RARE, SampleType=="Root")
 SoilsRARE<-subset_samples(RARE, SampleType=="Soil")
@@ -455,6 +455,9 @@ Samptypedata<-dplyr::select(Strucdf, SampleUnique, SampleType)
 ##Variance in total, root, and soil fungal comm. across sites
 ##This is accounting for the nested design; tree num is nested within Site 
 adonis(FUNGIdf ~ SiteID*SampleType, data=Fdf, strata = Fdf$Treenum, perm=1e3)
+
+adonis(Soildf ~ SiteID, data=Sdf, strata = Sdf$Treenum, perm=1e3)
+adonis(Rootdf ~ SiteID, data=Rdf, strata = Rdf$Treenum, perm=1e3)
 
 
 ##Are structures sig different from root sample from which they are collected?
@@ -718,7 +721,7 @@ barplot<-ggplot(data = filter(bars_all_agg), aes(SiteID, Abundance, fill = Order
 barplot
 ```
 Rhizonode taxa (all fungi)
-```{r}
+```{r message=FALSE, warning=FALSE}
 Top500rhizo= names(sort(taxa_sums(RAREstructure), TRUE)[1:500])
 Top500rhizo=prune_taxa(Top500rhizo, RAREstructure)
 
@@ -895,7 +898,7 @@ Rhizobarplot<-ggplot(data = filter(Rhizobars_agg), aes(Treenumber, Abundance, fi
 ```
 
 Rhizonode AMF taxa
-```{r echo=TRUE, message=TRUE, warning=TRUE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 GlomsRootsRhiz<-subset_samples(RAREstructure, SampleType=="Rhizonode")
 GlomsRootsRhiz<-subset_taxa(GlomsRootsRhiz, Phylum=="Glomeromycota")
 
@@ -1073,7 +1076,7 @@ Glombarplot<-ggplot(data = filter(Glombars_agg), aes(Treenumber, Abundance, fill
 ```
 
 Funguild
-```{r}
+```{r message=FALSE, warning=FALSE}
 setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData/")
 guildsecto<-read.csv("Redwoodfungibiogeo.guilds.csv", header =T)
 guildsecto <- guildsecto %>% dplyr::rename(OTU = X.OTU.ID) 
@@ -1191,14 +1194,13 @@ points <- SpatialPoints(coordsroots, proj4string=climr@crs)
 values<-raster::extract(climr, points)
 SiteNum<-redwoodsitesroots$SiteID
 df<-cbind.data.frame(coordinates(points), values, SiteNum)
-df
 
 clims<-clim.ca[[c(10, 18)]]
 pointsS <- SpatialPoints(coordssoils, proj4string=clims@crs)
 values<-raster::extract(clims, pointsS)
 SiteNumS<-redwoodsitessoils$SiteID
 dfS<-cbind.data.frame(coordinates(pointsS), values, SiteNumS)
-dfS
+
 
 library(dplyr)
 df2=df %>% 
@@ -1629,7 +1631,7 @@ varsrootsglom[[3]]
 
 ```
 Parameters after backwards model selection
-```{r}
+```{r message=FALSE, warning=FALSE}
 predD_rootc<-dplyr::select(predD_root, -aet, -ppt, -tmn, -tmx, -k, -EDG, -simpson, -redwoodPercent)
 predD_soilc<-dplyr::select(predD_soil, -aet, -ppt, -tmn, -tmx, -k, -EDG, -simpson, -pH)
 
@@ -1712,7 +1714,7 @@ gdmDistGLOMSroots <- formatsitepair(bioDglomroots, bioFormat = 1,
                        distPreds = NULL, weightType = "equal")
 ```
 Final models (after backwards model selection)
-```{r}
+```{r message=FALSE, warning=FALSE}
 setwd("~/Dropbox/Research/Thesis_Ch1/Data/CleanData")
 ##formatting site-pairs after model selection
 
@@ -2011,7 +2013,7 @@ colour = NA),strip.text = element_text(face="bold"))
 ```
 
 Alpha diversity (roots); no significant relationships
-```{r}
+```{r message=FALSE, warning=FALSE}
 RichnessROOTS<-estimate_richness(Roots, split = TRUE, measures = NULL)
 RichnessROOTS$SampleUnique<-rownames(RichnessROOTS)
 SampleData<-as(sample_data(Roots), "data.frame")
@@ -2082,9 +2084,14 @@ modelshannonpHrootsa<-lmer(formula = Shannon~pH +(1|SiteID/Treenum), data = Rich
 #qqp(residuals(modelshannonpHrootsb), col=2)
 summary(modelshannonpHrootsa)
 
+##just for comparison to soils 
+modelshannonEDGroots<-lmer(formula = Shannon~EDG +(1|SiteID/Treenum), data = RichnessROOTS, REML = T)
+
 library(sjPlot)
-Rootdiversitymodeltab<-tab_model(modelobservpHrootsa, modelshannonpHrootsb, auto.label = F)
-Rootdiversitymodeltab
+RootdiversitymodeltabpH<-tab_model(modelobservpHrootsa, modelshannonpHrootsb)
+RootdiversitymodeltabpH
+RootdiversitymodeltabEDG<-tab_model(modelobservEDGroots, modelshannonEDGroots)
+RootdiversitymodeltabEDG
 
 summary(aov(RichnessROOTS$Observed~RichnessROOTS$SiteID))
 summary(aov(RichnessROOTS$Shannon~RichnessROOTS$SiteID))
@@ -2096,9 +2103,9 @@ TukeyHSD(RobservSite)
 TukeyHSD(RshannonSite)
 
 
-ObservedRoots<-ggplot(data=RichnessROOTS, aes(x=WEDG, y=Observed, color=SiteID))+
+ObservedRoots<-ggplot(data=RichnessROOTS, aes(x=EDG, y=Observed, color=SiteID))+
 geom_jitter(width = 0.1)+
-  labs(x="Weighted-edge density (WEDG)", y="Number of Species")+
+  labs(x="Edge density (EDG)", y="Number of Species")+
   facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
   Publicationcolors()+
   #geom_abline(aes(intercept=`(Intercept)`, slope=`scale(pH)`), data=as.data.frame(t(fixef(model3e))))+
@@ -2124,10 +2131,10 @@ geom_jitter(width = 0.1)+
 ObservedRoots
 
 
-Shannonroots<-ggplot(data=RichnessROOTS, aes(x=pH, y=Shannon, color=SiteID))+
+Shannonroots<-ggplot(data=RichnessROOTS, aes(x=EDG, y=Shannon, color=SiteID))+
   Publicationcolors()+
   geom_point(aes())+
-  labs(x="pH", y="Shannon Diversity")+
+  labs(x="Edge density (EDG)", y="Shannon Diversity")+
   facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
   #geom_abline(aes(intercept=`(Intercept)`, slope=`scale(pH)`), data=as.data.frame(t(fixef(model3e.Shannon))), color="black", linetype = "dashed")+
   theme(text = element_text(family = "Helvetica"),
@@ -2161,7 +2168,7 @@ Shannonroots
 ```
 
 Richness in soils
-```{r}
+```{r message=FALSE, warning=FALSE}
 RichnessSoilS<-estimate_richness(Soils, split = TRUE, measures = NULL)
 RichnessSoilS$SampleUnique<-rownames(RichnessSoilS)
 SampleData<-as(sample_data(Soils), "data.frame")
@@ -2301,7 +2308,7 @@ ShannonSoils<-ggplot(data=RichnessSoilS, aes(x=EDG, y=Shannon, color=SiteID))+
 ```
 
 Rhizonode Richness (soil vs root vs rhizonode)
-```{r}
+```{r message=FALSE, warning=FALSE}
 RichnessRhizo<-estimate_richness(RAREstructure, split = TRUE, measures = NULL)
 RichnessRhizo$SampleUnique<-cbind(Strucdf$SampleUnique)
 SampleDataRhizo<-as(sample_data(RAREstructure), "data.frame")
@@ -2418,7 +2425,7 @@ mantel(fungi.dist.soils$beta.jne~EDGdistsoil)
 mantel(fungi.dist.soils$beta.jtu~EDGdistsoil)
 ```
 Beta-dispersion (homogeneity of variate dispersion across sites)
-```{r}
+```{r message=FALSE, warning=FALSE}
 SampleDataAll<-as(sample_data(RARE), "data.frame")
 SampleDataSoil<-as(sample_data(Soils), "data.frame")
 SampleDataRoots<-as(sample_data(Roots), "data.frame")
@@ -2612,7 +2619,7 @@ betahomogenstruc<-ggplot(data=betadispstruc, aes(SampleType, BetaDist, fill=Samp
 
 ```
 Rhizonodes
-```{r}
+```{r message=FALSE, warning=FALSE}
 Top500structures = names(sort(taxa_sums(RAREstructure), TRUE)[1:500])
 Top500structures <- prune_taxa(Top500structures, Structures)
 
@@ -2771,7 +2778,7 @@ scale_fill_manual(values = c("#2332A0", "#36B4FC", "#1BFFE8"))+
 
 ```
 Indicator spp analysis
-```{r echo=TRUE, message=TRUE, warning=TRUE}
+```{r message=FALSE, warning=FALSE}
 
 #Lets start trying to do indicator species. First extract the OTU table from rarefied NoSingletons
 
@@ -2809,12 +2816,12 @@ write.csv(indval_output, file = "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecolog
 
 ```
 Figure formatting
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(cowplot)
 
 Figure1<-cowplot::plot_grid(plotmap)
 
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("Figure1.pdf", plot = Figure1, width=3.8, height = 4.5)                
   
 Figure2A<-cowplot::plot_grid(GDMsoil,GDMsoilsymbios,
@@ -2840,7 +2847,7 @@ Figure2ABCl<-cowplot::plot_grid(Figure2A, Figure2BCl,
                             label_size = 12, 
                             label_fontfamily = "sans")
 
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("Figure2ABC.pdf", plot = Figure2ABCl, width=10.2, height = 5.8)
 
 Figure3A<-cowplot::plot_grid(GDMroot,
@@ -2848,7 +2855,7 @@ Figure3A<-cowplot::plot_grid(GDMroot,
                   label_size = 14,
                   label_fontfamily = "sans",
                   ncol = 1)
-Figure3BC<-cowplot::plot_grid(ObservedRoots,betadisplotroot,
+Figure3BC<-cowplot::plot_grid(Shannonroots,betadisplotroot,
                   labels = c("b)", "c)"), 
                   ncol=1,
                   label_size = 14,
@@ -2865,7 +2872,7 @@ Figure3ABC<-cowplot::plot_grid(Figure3A,Figure3BCl,
                             label_size = 12, 
                             label_fontfamily = "sans")
 
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("Figure3ABC.pdf", plot = Figure3ABC, width=10.2, height = 5.8)
 
 ##Figure 4; morphological characterization of rhizonodes
@@ -2884,7 +2891,7 @@ Figure5B<-cowplot::plot_grid(Rhizobarplot,
 Figure5AB<-cowplot::plot_grid(Figure5A,Figure5B,
                             rel_widths = c(3,3.2),
                             nrow=1)
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("Figure5AB.pdf", plot = Figure5AB, width=8, height = 4)
 
 
@@ -2899,7 +2906,7 @@ Figure6C<-cowplot::plot_grid(logplotRootRhizo,
                             label_fontfamily = "sans")
 Figure6ABC<-cowplot::plot_grid(Figure6AB,Figure6C,
                                rel_widths  = c(2,6))
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("Figure6ABC.pdf", plot = Figure6ABC, width=11.5, height = 6.5)
 
 
@@ -2911,7 +2918,7 @@ FigS1<-cowplot::plot_grid(GDMsoilsaps, GDMsoilpaths,
                   label_fontfamily = "sans",
                   ncol = 1)
 
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("FigS1.pdf", plot = FigS1, width=4.5, height = 5.8)
 
 FigureS2A<-cowplot::plot_grid(ORD,
@@ -2927,21 +2934,19 @@ FigureS2B<-cowplot::plot_grid(barplot,
 FigureS2AB<-cowplot::plot_grid(FigureS2A,FigureS2B,
                             rel_widths = c(3.9,2.8),
                             nrow=1)
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("FigureS2AB.pdf", plot = FigureS2AB, width=10.2, height = 5)
-
-
 
 
 FigS3<-cowplot::plot_grid(Ectorootbarplot,
                   ncol = 1)
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("FigS3.pdf", plot = FigS3, width=4.5, height = 5.8)
 
 
 FigS4<-cowplot::plot_grid(Glombarplot,
                   ncol = 1)
-setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Submission/")
+setwd("~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/Figures_updated/")
 ggsave("FigS4.pdf", plot = FigS4, width=4.5, height = 5.8)
 
 
