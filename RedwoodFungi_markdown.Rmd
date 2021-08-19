@@ -1600,6 +1600,14 @@ varssoilsaps[[1]]
 varssoilsaps[[2]]
 varssoilsaps[[3]]
 
+Svarssoilsaps<-as.data.frame(varssoilsaps[[1]])
+Svarssoilsaps2<-as.data.frame(varssoilsaps[[2]])
+Svarssoilsaps3<-as.data.frame(varssoilsaps[[3]])
+write.csv(Svarssoilsaps, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilsapsGDMselection.csv", )
+write.csv(Svarssoilsaps2, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilsapsGDMselection2.csv", )
+write.csv(Svarssoilsaps3, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilsapsGDMselection3.csv", )
+##geographic and pH
+
 #varssoilsymbio<-gdm.varImp(gdmDistsoilsymbio, geo = TRUE, splines = NULL)
 #setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
 #save(varssoilsymbio, file = "gdm_soilssymbio_modelselection.rda")
@@ -1610,6 +1618,14 @@ varssoilsymbio[[1]]
 varssoilsymbio[[2]]
 varssoilsymbio[[3]]
 
+Svarssoilsyms<-as.data.frame(varssoilsymbio[[1]])
+Svarssoilsyms2<-as.data.frame(varssoilsymbio[[2]])
+Svarssoilsyms3<-as.data.frame(varssoilsymbio[[3]])
+write.csv(Svarssoilsyms, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilsymsGDMselection.csv", )
+write.csv(Svarssoilsyms2, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilsymsGDMselection2.csv", )
+write.csv(Svarssoilsyms3, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilsymsGDMselection3.csv", )
+
+
 #varssoilpatho<-gdm.varImp(gdmDistsoilpatho, geo = FALSE, splines = NULL)
 #setwd("~/Dropbox/Research/Thesis_Ch1/Data/R")
 #save(varssoilpatho, file = "gdm_soilpathos_modelselection.rda")
@@ -1619,6 +1635,13 @@ load(file = "gdm_soilpathos_modelselection.rda")
 varssoilpatho[[1]]
 varssoilpatho[[2]]
 varssoilpatho[[3]]
+
+Svarssoilpaths<-as.data.frame(varssoilpatho[[1]])
+Svarssoilpaths2<-as.data.frame(varssoilpatho[[2]])
+Svarssoilpaths3<-as.data.frame(varssoilpatho[[3]])
+write.csv(Svarssoilpaths, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilGDMselection.csv", )
+write.csv(Svarssoilpaths2, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilpathsGDMselection2.csv", )
+write.csv(Svarssoilpaths3, "~/Dropbox/Research/Thesis_Ch1/Manuscript/Ecology Letters 2/MajorRevisions/SupplementalStatsTables/SoilpathsGDMselection3.csv", )
 
 #varsrootsglom<-gdm.varImp(gdmDistGLOMSroots, geo = TRUE, splines = NULL)
 #save(varsrootsglom, file = "gdm_glomsroots_modelselection.rda")
@@ -1827,7 +1850,7 @@ GDMsoil<-ggplot(data = soilplotsplines)+
   geom_line(aes(x=scale(x.redwoodPercent), y=y.redwoodPercent, color="Redwood percent"), size=1)+
   facet_wrap(~Type, ncol=1, scales = "free_y",
              strip.position = "right")+
-  scale_color_manual(values=c("#1b3752", "#800000"), labels=c("Geographic distance", "Redwood percent"))+
+  scale_color_manual(values=c("#3c4e5c", "#a14329"), labels=c("Geographic distance", "Percent redwood cover"))+
   scale_y_continuous("Partial ecological distance")+
   scale_x_continuous("Geographic distance (scaled)", 
                      breaks = seq(-1,1, by=0.5), 
@@ -1852,7 +1875,7 @@ panel.background = element_rect(fill="transparent", colour = NA),
         legend.text = element_text(size =9),
         legend.spacing = unit(0, "mm"),
         legend.title = element_blank(),
-        legend.position = c(0.29,0.95),
+        legend.position = c(0.21,0.90),
         legend.background = element_rect(fill = "transparent",
 colour = NA),strip.text = element_text(face="bold"))
 
@@ -1863,7 +1886,7 @@ GDMsoilsymbios<-ggplot(data = symbiosoilsplines)+
   geom_line(aes(x=scale(x.redwoodPercent), y=y.redwoodPercent, color="Redwood percent"), size=1)+
   facet_wrap(~Type, ncol=1, scales = "free_y",
              strip.position = "right")+
-  scale_color_manual(values=c("#1b3752", "#800000"), labels=c("EDG", "Redwood percent"))+
+  scale_color_manual(values=c("#aebcc0", "#a14329"), labels=c("EDG", "Percent redwood cover"))+
   scale_y_continuous("Partial ecological distance")+
   scale_x_continuous("Edge Density (EDG)", breaks = c(-1,0,1),
                      #0 =mean EDG; mean(dfroot$EDG)=185.3344
@@ -1891,7 +1914,7 @@ panel.background = element_rect(fill="transparent", colour = NA),
         legend.text = element_text(size =9),
         legend.spacing = unit(0, "mm"),
         legend.title = element_blank(),
-        legend.position = c(0.29,0.95),
+        legend.position = c(0.21,0.90),
         legend.background = element_rect(fill = "transparent",
 colour = NA),strip.text = element_text(face="bold"))
 
@@ -1904,7 +1927,7 @@ GDMroot<-ggplot(data = rootplotsplines)+
              strip.position = "right")+
   scale_y_continuous("Partial ecological distance")+
   scale_x_continuous("Geographic distance (scaled)", sec.axis=sec_axis(~(.*sdpH)+meanpH, name="Soil pH"))+
-  scale_color_manual(values=c("#1b3752", "#ffab40"), labels=c("Geographic distance", "Soil pH"))+
+  scale_color_manual(values=c("#3c4e5c", "#bb9236"), labels=c("Geographic distance", "Soil pH"))+
   theme( text = element_text(family = "Helvetica"),
          plot.title = element_text(margin = margin(b=5, r=5, l=5, unit = "mm"),
  size = rel(1),
@@ -1940,7 +1963,7 @@ GDMsoilsaps<-ggplot(data = sapsoilsplines)+
   geom_line(aes(x=scale(x.EDG), y=y.EDG, color="EDG"), size=1)+
   facet_wrap(~Type, ncol=1, scales = "free_y",
              strip.position = "right")+
-  scale_color_manual(values=c("#1b3752", "#800000"), labels=c("Geographic distance", "EDG"))+
+  scale_color_manual(values=c("#aebcc0","#3c4e5c"), labels=c("EDG","Geographic distance"))+
   scale_y_continuous("Partial ecological distance")+
   scale_x_continuous("Geographic distance (scaled)", 
                      breaks = seq(-1,1, by=0.5), 
@@ -1965,7 +1988,7 @@ panel.background = element_rect(fill="transparent", colour = NA),
         legend.text = element_text(size =9),
         legend.spacing = unit(0, "mm"),
         legend.title = element_blank(),
-        legend.position = c(0.22,0.9),
+        legend.position = c(0.26,0.9),
         legend.background = element_rect(fill = "transparent",
 colour = NA),strip.text = element_text(face="bold"))
 
@@ -1978,7 +2001,7 @@ sdpptpaths<-sd(pathosoilsplines$x.ppt)
 GDMsoilpaths<-ggplot(data=pathosoilsplines)+
   geom_line(aes(x=scale(x.ppt),y=y.ppt, color="Precipitation"), size=1)+
   geom_line(aes(x=scale(x.EDG),y=y.EDG, color="EDG"), size=1)+
-  scale_color_manual(values=c("#DF6813", "#048481"), labels=c("Preciptiation", "EDG"))+
+  scale_color_manual(values=c("#0088c9", "#aebcc0"), labels=c("Preciptiation", "EDG"))+
   facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
   scale_y_continuous("Partial ecological distance")+
   scale_x_continuous("Precipitation (mm/yr)", breaks = c(-1,0,1),
@@ -2007,7 +2030,7 @@ panel.background = element_rect(fill="transparent", colour = NA),
         legend.text = element_text(size =9),
         legend.spacing = unit(0, "mm"),
         legend.title = element_blank(),
-        legend.position = c(0.22,0.9),
+        legend.position = c(0.21,0.88),
         legend.background = element_rect(fill = "transparent",
 colour = NA),strip.text = element_text(face="bold"))
 ```
@@ -2039,8 +2062,8 @@ BIC(modelobservEDGroots,modelobservredPerroots, modelobservLPIroots)
 modelobservKroots<-lmer(formula = Observed~k +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
 modelobservpHroots<-lmer(formula = Observed~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
 
-AIC(modelobservLPIroots,modelobservKroots,modelobservpHroots)
-BIC(modelobservLPIroots,modelobservKroots,modelobservpHroots)
+AIC(modelobservredPerroots,modelobservEDGroots,modelobservpHroots)
+BIC(modelobservredPerroots,modelobservEDGroots,modelobservpHroots)
 
 ##pH is best model for roots
 modelobservpHrootsa<-lmer(formula = Observed~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
@@ -2068,8 +2091,8 @@ BIC(modelshannonEDGroots,modelshannonPerroots)
 modelshannonKroots<-lmer(formula = Shannon~k +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
 modelshannonpHroots<-lmer(formula = Shannon~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
 
-AIC(modelshannonPerroots, modelshannonKroots,modelshannonpHroots)
-BIC(modelshannonPerroots, modelshannonKroots,modelshannonpHroots)
+AIC(modelshannonPerroots, modelshannonEDGroots,modelshannonpHroots)
+BIC(modelshannonPerroots, modelshannonEDGroots,modelshannonpHroots)
 
 ##pH is best model
 modelshannonpHrootsa<-lmer(formula = Shannon~pH +(1|SiteID/Treenum), data = RichnessROOTS, REML = F)
@@ -2134,7 +2157,7 @@ ObservedRoots
 Shannonroots<-ggplot(data=RichnessROOTS, aes(x=EDG, y=Shannon, color=SiteID))+
   Publicationcolors()+
   geom_point(aes())+
-  labs(x="Edge density (EDG)", y="Shannon Diversity")+
+  labs(x="Edge density (EDG)", y="Shannon diversity index")+
   facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
   #geom_abline(aes(intercept=`(Intercept)`, slope=`scale(pH)`), data=as.data.frame(t(fixef(model3e.Shannon))), color="black", linetype = "dashed")+
   theme(text = element_text(family = "Helvetica"),
@@ -2155,14 +2178,7 @@ Shannonroots<-ggplot(data=RichnessROOTS, aes(x=EDG, y=Shannon, color=SiteID))+
             axis.ticks.length=unit(-1.4, "mm"), 
             panel.grid.major = element_blank(),
             panel.grid.minor = element_blank(),
-            legend.key = element_rect(fill="transparent", 
-                                      colour = NA),
-        legend.key.size= unit(4, "mm"),
-        legend.text = element_text(size =10),
-        legend.spacing = unit(0, "mm"),
-        legend.background = element_rect(fill = "transparent",
-                                         colour = NA),
-        strip.text = element_text(face="bold"))
+            legend.position  = "none")
 
 Shannonroots
 ```
@@ -2189,9 +2205,10 @@ BIC(modelobservredPer, modelobservLPI,modelobservEDG)
 ##compare to climate and chem
 modelobservK<-lmer(formula = Observed~k +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
 modelobservpH<-lmer(formula = Observed~pH +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+modelobservaet<-lmer(formula = Observed~aet +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
 
-AIC(modelobservEDG,modelobservK,modelobservpH)
-BIC(modelobservEDG,modelobservK,modelobservpH)
+AIC(modelobservEDG,modelobservK,modelobservaet, modelobservpH)
+BIC(modelobservEDG,modelobservK,modelobservaet,modelobservpH)
 
 ##best model is WEDG;
 modelobservEDGa<-lmer(formula = Observed~EDG+(1|SiteID/Treenum), data = RichnessSoilS, REML=F)
@@ -2218,9 +2235,13 @@ BIC(modelshannonEDG,modelshannonPer)
 ##compare to climate and chem
 modelshannonK<-lmer(formula = Shannon~k +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
 modelshannonpH<-lmer(formula = Shannon~pH +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
+modelshannonAET<-lmer(formula = Shannon~aet +(1|SiteID/Treenum), data = RichnessSoilS, REML = F)
 
-AIC(modelshannonEDG,modelshannonK,modelshannonpH)
-BIC(modelshannonEDG,modelshannonK,modelshannonpH)
+AIC(modelobservEDG,modelobservK, modelobservpH, modelobservaet)
+BIC(modelobservEDG,modelobservK,modelobservpH, modelobservaet)
+
+AIC(modelshannonEDG,modelshannonK,modelshannonpH, modelshannonaet)
+BIC(modelshannonEDG,modelshannonK,modelshannonpH, modelshannonaet)
 
 ##EDG is clear winner
 modelshannonEDGa<-lmer(formula = Shannon~EDG+(1|SiteID/Treenum), data = RichnessSoilS, REML=F)
@@ -2243,7 +2264,7 @@ Soildiversitymodeltab
 ShannonSoilsa<-ggplot(data=RichnessSoilS, aes(x=EDG, y=Shannon, color=SiteID))+
   Publicationcolors()+
   geom_jitter()+
-  labs(x="Edge density (EDG)", y="Shannon diversity index (H')")+
+  labs(x="Edge density (EDG)", y="Shannon diversity index")+
     facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
   geom_abline(aes(intercept=`(Intercept)`, slope=`EDG`), data=as.data.frame(t(fixef(modelshannonEDGb))), color="black")+
     theme( text = element_text(family = "Helvetica"),
@@ -2280,7 +2301,7 @@ Legend<-get_legend(ShannonSoilsa)
 ShannonSoils<-ggplot(data=RichnessSoilS, aes(x=EDG, y=Shannon, color=SiteID))+
   Publicationcolors()+
   geom_jitter(width = 0.1)+
-  labs(x="Edge density (EDG)", y="Shannon diversity index (H')")+
+  labs(x="Edge density (EDG)", y="Shannon diversity index")+
     facet_wrap(~Type, ncol=1, scales = "free_y", strip.position="right")+
   geom_abline(aes(intercept=`(Intercept)`, slope=`EDG`), data=as.data.frame(t(fixef(modelshannonEDGb))), color="black")+
     theme( text = element_text(family = "Helvetica"),
@@ -2736,9 +2757,6 @@ AMFstructuresdfsums=cbind(AMFstructuresdfsums,SampleData)
 as.character(AMFstructuresdfsums$SampleType)
 as.numeric(AMFstructuresdfsums$AMFsums)
 
-RhizoAMFtest<-aov(AMFstructuresdfsums$AMFsums~AMFstructuresdfsums$SampleType)
-summary(RhizoAMFtest)
-TukeyHSD(RhizoAMFtest)
 
 RhizoAMFtest<-aov(AMFstructuresdfsums$AMFsums~AMFstructuresdfsums$SampleType)
 summary(RhizoAMFtest)
