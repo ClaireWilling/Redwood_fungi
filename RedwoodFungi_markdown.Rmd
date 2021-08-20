@@ -2240,8 +2240,8 @@ modelshannonAET<-lmer(formula = Shannon~aet +(1|SiteID/Treenum), data = Richness
 AIC(modelobservEDG,modelobservK, modelobservpH, modelobservaet)
 BIC(modelobservEDG,modelobservK,modelobservpH, modelobservaet)
 
-AIC(modelshannonEDG,modelshannonK,modelshannonpH, modelshannonaet)
-BIC(modelshannonEDG,modelshannonK,modelshannonpH, modelshannonaet)
+AIC(modelshannonEDG,modelshannonK,modelshannonpH, modelshannonAET)
+BIC(modelshannonEDG,modelshannonK,modelshannonpH, modelshannonAET)
 
 ##EDG is clear winner
 modelshannonEDGa<-lmer(formula = Shannon~EDG+(1|SiteID/Treenum), data = RichnessSoilS, REML=F)
